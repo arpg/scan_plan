@@ -7,7 +7,7 @@ int main(int argc, char** argv)
 	ros::init(argc, argv, "scan_plan_node");
 	ros::NodeHandle nh(ros::this_node::getName());
 	
-	scan_plan_class scanPlan(&nh);
+	scan_plan scanPlan(&nh);
 	
 	ros::spin();
 
