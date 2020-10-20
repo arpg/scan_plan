@@ -1,13 +1,12 @@
 #include "scan_plan.h"
 
 // ***************************************************************************
-fov_cam_class(std::vector<double> camInfoP, std::vector<double> camRes, double maxDepth, geometry_msgs::TransformStamped camToBase)
+ph_cam_class::ph_cam_class(double* camInfoP, double* camRes, double maxDepth, geometry_msgs::TransformStamped camToBase)
 {
-  camInfoP_ = camInfoP;
-  camRes_ = camRes;
+  memcpy(camInfoP_, camInfoP, sizeof(double)*9);
+  memcpy(camRes_, camRes, sizeof(int)*2);
   maxDepth_ = maxDepth;
   camToBase_ = camToBase;
-
   compute_polytope();
 }
 
@@ -45,23 +44,34 @@ void ph_cam_class::compute_polytope()
   std::vector<geometry_msgs::Point> polyVerts;
  
   // define 2.5D vertices in camera optical frame
-  polyVerts.push_back( geometry_msgs::Point(0, 0, 0) );
-  polyVerts.push_back( geometry_msgs::Point(0, camRes_[1], maxDepth_) );
-  polyVerts.push_back( geometry_msgs::Point(camRes_[0], camRes_[1], maxDepth_) );
-  polyVerts.push_back( geometry_msgs::Point(camRes_[0], 0, maxDepth_) );
-  polyVerts.push_back( geometry_msgs::Point(0, 0, maxDepth_) );
+  geometry_msgs::Point pt; 
+
+  pt.x = 0; pt.y = 0; pt.z = 0;
+  polyVerts.push_back( pt );
+
+  pt.x = 0; pt.y = camRes_[1]; pt.z = maxDepth_;
+  polyVerts.push_back( pt );
+ 
+  pt.x = camRes_[0]; pt.y = camRes_[1]; pt.z = maxDepth_;
+  polyVerts.push_back( pt );
+
+  pt.x = camRes_[0]; pt.y = 0; pt.z = maxDepth_;
+  polyVerts.push_back( pt );
+
+  pt.x = 0; pt.y = 0; pt.z = maxDepth_;
+  polyVerts.push_back( pt );
 
   // project the vertices to 3D and transform them to base_link
   for (int i=0; i<polyVerts.size(); i++)
   {
     polyVerts[i] = point2_to_point3(polyVerts[i], true);
-    doTransform (polyVerts[i], polyVerts[i], camToBase_);
+    tf2::doTransform (polyVerts[i], polyVerts[i], camToBase_);
   }
   polytope_ = polyVerts;
 }
 
 // ***************************************************************************
-std::vector<geometry_msgs::Point> get_polytope()
+std::vector<geometry_msgs::Point> ph_cam_class::get_polytope()
 {
   return polytope_;
 }

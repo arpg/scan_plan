@@ -1,7 +1,7 @@
 #include "scan_plan.h"
 
 // ***************************************************************************
-scan_plan_class(ros::NodeHandle* nh)
+scan_plan_class::scan_plan_class(ros::NodeHandle* nh)
 {
   nh_ = nh;
   wait_for_params(nh_);
