@@ -14,12 +14,16 @@ private:
   ros::NodeHandle* nh_;
   geometry_msgs::PoseArray poseHist_;
   std::vector<ph_cam> phCams_;
+  std::vector<rrt_node> nodeLst_;
+
+  int nNodes_;
+  double scanBounds_[2][3]; // [min,max] x [x,y,z]
 
 
 public:
   scan_plan(ros::NodeHandle*);
   void wait_for_params(ros::NodeHandle*);
-  //double dist_polytope(geometry_msgs::Pose, geometry_msgs::Pose); 
+  void build_tree(double*, double*, double);
 };
 
 #endif
