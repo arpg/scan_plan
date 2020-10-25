@@ -9,7 +9,7 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
 
 
 
-  nodeLst_.resize(nNodes_);
+  //nodeLst_.resize(nNodes_);
 }
 
 // ***************************************************************************

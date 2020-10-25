@@ -3,6 +3,7 @@
 
 #include "ros/ros.h"
 #include "ph_cam.h"
+#include "rrt.h"
 #include "geometry_msgs/PoseArray.h"
 
 // ***************************************************************************
@@ -14,7 +15,7 @@ private:
   ros::NodeHandle* nh_;
   geometry_msgs::PoseArray poseHist_;
   std::vector<ph_cam> phCams_;
-  std::vector<rrt_node> nodeLst_;
+  //rrt tree_;
 
   int nNodes_;
   double scanBounds_[2][3]; // [min,max] x [x,y,z]

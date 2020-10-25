@@ -16,6 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
 )
 
+find_package(Eigen3 REQUIRED)
+
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -107,7 +109,7 @@ find_package(catkin REQUIRED COMPONENTS
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES scan_plan ph_cam
+  LIBRARIES scan_plan ph_cam rrt
 #  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy sensor_msgs std_msgs
 #  DEPENDS system_lib
 )
@@ -126,10 +128,13 @@ include_directories(
 
 ## Declare a C++ library
  add_library(scan_plan
-   src/scan_plan_main.cpp
+   src/scan_plan.cpp
  )
  add_library(ph_cam
    src/ph_cam.cpp
+ )
+ add_library(rrt
+   src/rrt.cpp
  )
 
 ## Add cmake target dependencies of the library
@@ -137,6 +142,7 @@ include_directories(
 ## either from message generation or dynamic reconfigure
  add_dependencies(scan_plan ${catkin_EXPORTED_TARGETS})
  add_dependencies(ph_cam ${catkin_EXPORTED_TARGETS})
+ add_dependencies(rrt ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
@@ -154,9 +160,9 @@ include_directories(
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
- 
+ target_link_libraries(rrt ${catkin_LIBRARIES})
  target_link_libraries(ph_cam ${catkin_LIBRARIES} /usr/local/openGJK/libopenGJKlib.a)
- target_link_libraries(scan_plan ${catkin_LIBRARIES})
+ target_link_libraries(scan_plan ${catkin_LIBRARIES} ph_cam rrt)
  target_link_libraries(scan_plan_node ${catkin_LIBRARIES} scan_plan)
 
 #############
