@@ -1,93 +1,114 @@
 #include "rrt.h"
 
 // ***************************************************************************
-rrt::rrt(int nNodes, double* minBnds, double* maxBnds, double nearRad)
+rrt::rrt(int nNodes, double* minBnds, double* maxBnds, double radNear, double delta)
 {
-  nodes_.reserve(nNodes);
+  posNds_.resize(nNodes,3);
+  cstNds_.resize(nNodes);
+  prntNds_.reserve(nNodes);
 
   std::memcpy(minBnds_, minBnds, sizeof(double)*3);
   std::memcpy(maxBnds_, maxBnds, sizeof(double)*3);
   //map_ = map; (in some form)
 
-  nearRad_ = nearRad;
-  idsNear_.reserve(nNodes);
-  costsN_.reserve(nNodes);
-  costsL_.reserve(nNodes);
+  radNear_ = radNear;
+  nearNds_.reserve(nNodes);
+
+  delDist_ = delDist;
+  nNodes = nNodes_;
 }
 
 // ***************************************************************************
 void rrt::clear()
 {
-  nodes_.resize(0);
+  actNds_ = 0;
 }
 
 // ***************************************************************************
-return rrt::add_node(geoemtry_msgs::Pose pos, rrt_node* parent)
+void rrt::modify_node(int idNd, Eigen::Vector3d pos, double cost, int idPrnt)
 {
-  rrt_node nd;
-  nd.pos = pos;
-  nd.parent = parent;
-  nodes_.push_back(nd);
+  posNds_.row(idNd) = pos;
+ 
+  cstNds_(idNd) = cost;
 
-  return (nodes_.size()-1);
+  idPrnts_[idNd] = idPrnt;
+}
+
+// ***************************************************************************
+int rrt::add_node(Eigen::Vector3d pos, double cost, int idPrnt)
+{
+  posNds_.row(actNds_) = pos;
+ 
+  cstNds_(actNds_) = cost;
+
+  idPrnts_[actNds_] = idPrnt;
+
+  actNds_++;
+
+  return (actNds_-1);
 }
 
 // ***************************************************************************
 void rrt::build(geometry_msgs::Point posRoot)
 {
-  add_node(posRoot, NULL);
+  clear();
+  add_node(posRoot, 0, 0);
 
-  while (nodes_.size() < nodes_.capacity())
+  while (actNds_ < nNodes_)
   {
-    geometry_mgs::Point posRand = rand_pos(minBnds_, maxBnds_);
+    Eigen::Vector3d posRand = rand_pos(minBnds_, maxBnds_);
 
     int idNearest = find_nearest(posRand);
-    geometry_msgs::Point posNearest = nodes_[idNearest].pos;
+    Eigen::Vector3d posNearest = posNds_.row(idNearest);
 
-    geometry_msgs::Point posNew = steer(posNearest, posRand, delta_);
+    Eigen::Vector3d posNew = steer(posNearest, posRand, delDist_);
 
     if ( under_collision(posNearest, posNew) )
       continue;
 
-    int idNew = add_node(posNew, &nodes_[idNearest]);
-    double costNew = node_cost(idNew); 
+    find_near(posNew, radNear_); // copy idsNear_,pCosts,lCosts_
 
-    //idsNear_.resize(0);
-    //colls_.resize(0);
-    find_near(posNew, radNear_); // copy idsNear_,pCosts,lCosts_   
+    double cstNew = cstNds_(idNearest) + delDist_;    
+    int idNew = add_node(posNew, cstNew, idNearest);    
 
     int idMin = idNearest;
-    for (i=0; i<idsNear_.size(); i++)
+    for (int i=0; i<nearNds_.size(); i++)
     {
-      int idNear = idsNear_[i];
-      double costL = costsL_[i]; // line (with new) cost
-      double costN = costsN_[i]; // node cost
+      int idNear = nearNds_[i].id;
+      double cstL = nearNds_[i].cstLnk; // line (with new) cost
+      double cstN = nearNds_[i].cstNd; // node cost
 
-      geometry_msgs::Point posNear = nodes_[idNear].pos;
+      Eigen::Vector3d posNear = posNds_.row(idNear);
 
-      if( costN + costL < costNew )
+      double potCstNew = cstN + cstL;
+      if( potCstNew < cstNew )
       {
-        nodes_[idNew].parent = &nodes_[idNear];
+        //cstNew = potCstNew;
+        modify_node(idNew, posNew, potCstNew, idNear);
+
         idMin = idNear;
         break; // check if any solution is fine or the least has to be found
       }
     }
 
-    costNew = node_cost(idNew);
-    for (i=0; i<idsNear_.size(); i++)
+    cstNew = cstNds_(idNew);
+    for (int i=0; i<nearNds_.size(); i++)
     {
-      int idNear = idsNear_[i];
-      double costL = costsL_[i]; // line (near-new) cost
-      double costN = costsN_[i]; // near node cost
+      int idNear = nearNds_[i].id;
+      double cstL = nearNds_[i].cstLnk; // line (with new) cost
+      double cstN = nearNds_[i].cstNd; // node cost
 
       if ( idNear == idMin )
         continue; 
 
-      geometry_msgs::Point posNear = nodes_[idNear].pos;
+      Eigen::Vector3d posNear = posNds_.row(idNear);
  
-      if( costNew + costL < costN )
+      double potCstN = costNew + costL;
+      if( potCstN < costN )
       {
-        nodes_[idNear].parent = &nodes_[idNew];
+        //cstN = potCstN;
+        modify_node(idNear, posNear, potCstN, idNew);
+
         break; // check if any solution is fine or the least has to be found
       }
     }
@@ -99,21 +120,58 @@ void rrt::build(geometry_msgs::Point posRoot)
 // ***************************************************************************
 geometry_mgs::Point rrt::rand_pos(double* min, double* max)
 {
-  //double val = (double)rand() / RAND_MAX;
-  //return min + val * (max - min);
+  srand (time(NULL));
+
+  geometry_mgs::Point pt;
+
+  pt.x = min[0] + (double)rand() / RAND_MAX * (max[0] - min[0]);
+  pt.y = min[1] + (double)rand() / RAND_MAX * (max[1] - min[1]);
+  pt.z = min[2] + (double)rand() / RAND_MAX * (max[2] - min[2]);
+  return pt;
 }
 
 // ***************************************************************************
-rrt_node rrt::find_nearest(geometry_msgs::Point pos)
+int rrt::find_nearest(geometry_msgs::Point pos)
 {
+  Eigen::Vector3d posRand;
+  posRand(0) = pos.x;
+  posRand(1) = pos.y;
+  posRand(2) = pos.z;
+
+  Eigen::Index minIndx;
+  ( posNds_.topRows(actNds_).rowwise() - posRand.transpose() ).rowwise().squaredNorm().minCoeff(&minIndex);
+
+  return minIndx;
+}
+
+// ***************************************************************************
+void rrt::find_near(geometry_msgs::Point pos, double rad)
+{
+  nearNds_.resize(0);
   
-}
+  Eigen::Vector3d posNew;
+  posNew(0) = pos.x;
+  posNew(1) = pos.y;
+  posNew(2) = pos.z;  
 
-// ***************************************************************************
-std::vector<int> rrt::find_near(geometry_msgs::Point pos, double rad)
-{
-  //clear idsNear_,costsN_, costsL_ first
-  // check for collisions too, for pos/new - nears lines, only output collision free ones
+  near_node nearNd;
+  
+  for (int i=0; i<actNds_; i++)
+  {
+    nearNd.cstLnk = ( posNds_.row(i) - posNew.transpose() ).norm();
+
+    if ( nearNd.cstLnk > rad )
+      continue;
+    if ( under_collision( posNds_.row(i), posNew ) )
+      continue;
+
+    nearNd.cstNd = cstNds_(i);
+    nearNd.id = i;
+
+    nearNds_.push_back(nearNd);
+  }
+
+  // ^ the orders can be reversed in col checks are less expensive than norms
 }
 
 // ***************************************************************************
@@ -123,10 +181,5 @@ geometry_msgs::Point rrt::steer(geometry_msgs::Point posFrom, geometry_msgs::Poi
 
 // ***************************************************************************
 bool rrt::under_collision(geometry_msgs::Point pos1, geometry_msgs::Point pos2)
-{
-}
-
-// ***************************************************************************
-double node_cost(int id)
 {
 }

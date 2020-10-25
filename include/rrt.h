@@ -2,10 +2,11 @@
 #define RRT_H
 
 // ***************************************************************************
-struct rrt_node
+struct near_node
 {
-  rrt_node* parent;
-  geometry_msgs::Point pos;
+  int id; // node id/index
+  double cstNd; // cost of near node
+  double cstLnk; // cost of line(near node - new node)
 };
 
 
@@ -13,7 +14,14 @@ class rrt
 {
 
 private: 
-  std::vector<rrt_node> nodes_;
+  Eigen::MatrixXd posNds_; // position of all the nodes (Nx3)
+  Eigen::VectorXd cstNds_; // cost of all the nodes (Nx1)
+  int nNodes_;
+
+  std::vector<int> idPrnts_; // parent ids of all the nodes
+
+  int actNds_; // active nodes
+  double delDist_;
 
   double minBnds_[3];
   double maxBnds_[3];
@@ -21,14 +29,9 @@ private:
   double radNear_;
 
   // outputs of 'find_near' function, avoiding repeated allocation/deallocation
-  std::vector<int> idsNear_; // near node ids (indx in the list nodes_)
-  std::vector<double> costsN_; // near-root cost
-  std::vector<double> costsL_; // near-new cost
+  std::vector<near_node> nearNds_;
 
-  double delta_;
 public:
-  
-
   rrt();
   ~rrt();
 };
