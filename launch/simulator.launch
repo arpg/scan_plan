@@ -1,0 +1,17 @@
+<launch>
+<!--  <include file="$(find rotors_gazebo)/launch/mav_hovering_example_with_vi_sensor.launch">
+    <arg name="mav_name" value="iris"/>
+    <arg name="world_name" value="basic"/>
+  </include> -->
+
+	<node pkg="octomap_server" type="octomap_server_node" name="octomap_server">
+		<param name="resolution" value="0.15" />
+		
+		<param name="frame_id" type="string" value="A01" />
+		
+		<param name="sensor_model/max_range" value="5.0" />
+		
+		<remap from="cloud_in" to="/A01/points" />
+	
+	</node> 
+</launch>

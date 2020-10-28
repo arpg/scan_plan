@@ -14,9 +14,12 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
+  octomap_msgs
 )
 
 find_package(Eigen3 REQUIRED)
+find_package(octomap REQUIRED)
+find_package(dynamicEDT3D REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -123,6 +126,9 @@ catkin_package(
 include_directories(
   include
   /usr/local/openGJK
+  ${OCTOMAP_INCLUDE_DIRS}
+  ${DYNAMICEDT3D_INCLUDE_DIRS}
+  #/home/shakeeb/octomap/dynamicEDT3D/include
   ${catkin_INCLUDE_DIRS}
 )
 
@@ -162,7 +168,7 @@ include_directories(
 ## Specify libraries to link a library or executable target against
  target_link_libraries(rrt ${catkin_LIBRARIES})
  target_link_libraries(ph_cam ${catkin_LIBRARIES} /usr/local/openGJK/libopenGJKlib.a)
- target_link_libraries(scan_plan ${catkin_LIBRARIES} ph_cam rrt)
+ target_link_libraries(scan_plan ${catkin_LIBRARIES} ph_cam rrt ${OCTOMAP_LIBRARIES} ${DYNAMICEDT3D_LIBRARIES})
  target_link_libraries(scan_plan_node ${catkin_LIBRARIES} scan_plan)
 
 #############

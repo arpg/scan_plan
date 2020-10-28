@@ -2,9 +2,9 @@
 #define RRT_H
 
 #include <iostream>
-#include <eigen3/Eigen/Dense>
+//#include <eigen3/Eigen/Dense>
 //#include <eigen3/Eigen/Geometry>
-//#include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/Core>
 #include <vector>
 
 // ***************************************************************************
