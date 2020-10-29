@@ -7,6 +7,8 @@
 #include <eigen3/Eigen/Core>
 #include <vector>
 
+#include "dynamicEDT3D/dynamicEDTOctomap.h"
+
 // ***************************************************************************
 struct near_node
 {
@@ -34,13 +36,13 @@ private:
 
   double radNear_;
 
-  std::function<bool(Eigen::Vector3d, Eigen::Vector3d)> u_coll_fcn_ptr_;
-
   // outputs of 'find_near' function, avoiding repeated allocation/deallocation
   std::vector<near_node> nearNds_;
-
+  
+  DynamicEDTOctomap* octDist_;
+ 
 public:
-  rrt(int nNodes, double*, double*, double, double, std::function<bool(Eigen::Vector3d, Eigen::Vector3d)>);
+  rrt(int nNodes, double[3], double[3], double, double);
   ~rrt();
 
   void clear();
@@ -52,6 +54,8 @@ public:
   void find_near(Eigen::Vector3d, double);
   Eigen::Vector3d steer(Eigen::Vector3d, Eigen::Vector3d, double);
   bool under_collision(Eigen::Vector3d, Eigen::Vector3d);
+  bool u_coll_octomap(Eigen::Vector3d, Eigen::Vector3d);
+  void update_octomap_dist(DynamicEDTOctomap*);
 };
 
 #endif

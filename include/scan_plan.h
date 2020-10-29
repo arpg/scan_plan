@@ -4,7 +4,7 @@
 #include "ros/ros.h"
 #include "ph_cam.h"
 #include "rrt.h"
-#include "geometry_msgs/PoseArray.h"
+#include "nav_msgs/Path.h"
 #include "octomap_msgs/Octomap.h"
 #include "octomap_msgs/conversions.h"
 #include "dynamicEDT3D/dynamicEDTOctomap.h"
@@ -21,15 +21,20 @@ private:
   std::vector<ph_cam> phCams_;
   //rrt tree_;
 
-  int nNodes_;
-  double scanBounds_[2][3]; // [min,max] x [x,y,z]
+  double scanBnds_[2][3]; // [min,max] x [x,y,z]
 
-  ros::Subscriber octmpSub_;
+  ros::Subscriber octSub_;
+  ros::Publisher pathPub_;
 
-  octomap::OcTree* ocTree_ = NULL;
-  DynamicEDTOctomap* distMap_ = NULL;
+  rrt* rrtTree_;
+  octomap::OcTree* octTree_ = NULL;
+  DynamicEDTOctomap* octDist_ = NULL;
 
   uint8_t isInitialized_;
+
+  int rrtNNodes_;
+  double rrtRadNear_;
+  double rrtDelDist_;
 
 public:
   scan_plan(ros::NodeHandle*);
@@ -40,6 +45,7 @@ public:
   void init_dist_map();
 
   void octomap_cb(const octomap_msgs::Octomap);
+  void test_script();
 };
 
 #endif

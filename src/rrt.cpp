@@ -1,7 +1,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-rrt::rrt(int nNodes, double* minBnds, double* maxBnds, double radNear, double delDist, std::function<bool(Eigen::Vector3d, Eigen::Vector3d)> u_coll_fcn_ptr)
+rrt::rrt(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist)
 {
   posNds_.resize(nNodes,3);
   cstNds_.resize(nNodes);
@@ -16,8 +16,6 @@ rrt::rrt(int nNodes, double* minBnds, double* maxBnds, double radNear, double de
 
   delDist_ = delDist;
   nNodes = nNodes_;
-
-  u_coll_fcn_ptr_ = u_coll_fcn_ptr;
 }
 
 // ***************************************************************************
@@ -184,5 +182,27 @@ Eigen::Vector3d rrt::steer(Eigen::Vector3d posFrom, Eigen::Vector3d posTowards, 
 // ***************************************************************************
 bool rrt::under_collision(Eigen::Vector3d pos1, Eigen::Vector3d pos2)
 {
-  return u_coll_fcn_ptr_(pos1,pos2);
+  return u_coll_octomap(pos1,pos2);
 }
+
+// ***************************************************************************
+bool rrt::u_coll_octomap(Eigen::Vector3d pos1, Eigen::Vector3d pos2)
+{
+}
+
+// ***************************************************************************
+void rrt::update_octomap_dist(DynamicEDTOctomap* octDist)
+{
+  octDist_ = octDist;
+}
+
+// ***************************************************************************
+// ***************************************************************************
+// ***************************************************************************
+
+// ***************************************************************************
+// ***************************************************************************
+// ***************************************************************************
+// ***************************************************************************
+
+
