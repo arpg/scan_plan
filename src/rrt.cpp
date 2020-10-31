@@ -1,7 +1,14 @@
 #include "rrt.h"
 
 // ***************************************************************************
-rrt::rrt(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist)
+rrt::rrt(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist, double radRob, DynamicEDTOctomap* octDist)
+{
+  octDist_ = octDist;
+  init(nNodes, minBnds, maxBnds, radNear, radRob, delDist);
+}
+
+// ***************************************************************************
+void rrt::init(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist, double radRob)
 {
   posNds_.resize(nNodes,3);
   cstNds_.resize(nNodes);
@@ -9,13 +16,14 @@ rrt::rrt(int nNodes, double minBnds[3], double maxBnds[3], double radNear, doubl
 
   std::memcpy(minBnds_, minBnds, sizeof(double)*3);
   std::memcpy(maxBnds_, maxBnds, sizeof(double)*3);
-  //map_ = map; (in some form)
 
   radNear_ = radNear;
   nearNds_.reserve(nNodes);
 
   delDist_ = delDist;
   nNodes = nNodes_;
+
+  radRob_ = radRob*radRob;
 }
 
 // ***************************************************************************
@@ -63,7 +71,7 @@ void rrt::build(Eigen::Vector3d posRoot)
 
     Eigen::Vector3d posNew = steer(posNearest, posRand, delDist_);
 
-    if ( under_collision(posNearest, posNew) )
+    if ( u_coll(posNearest, posNew) )
       continue;
 
     find_near(posNew, radNear_); // copy idsNear_,pCosts,lCosts_
@@ -152,7 +160,7 @@ void rrt::find_near(Eigen::Vector3d posNew, double rad)
 
     if ( nearNd.cstLnk > rad )
       continue;
-    if ( under_collision( posNds_.row(i), posNew ) )
+    if ( u_coll( posNds_.row(i), posNew ) )
       continue;
 
     nearNd.cstNd = cstNds_(i);
@@ -180,20 +188,37 @@ Eigen::Vector3d rrt::steer(Eigen::Vector3d posFrom, Eigen::Vector3d posTowards, 
 }
 
 // ***************************************************************************
-bool rrt::under_collision(Eigen::Vector3d pos1, Eigen::Vector3d pos2)
+bool rrt::u_coll(Eigen::Vector3d pos1, Eigen::Vector3d pos2)
 {
-  return u_coll_octomap(pos1,pos2);
+  double delLambda = 0.2;
+
+  double lambda = 0;
+  Eigen::Vector3d pos;
+  while(lambda <= 1)
+  {
+    pos = (1-lambda)*pos1 + lambda*pos2; 
+
+    if ( u_coll_octomap(pos) )
+      return true;
+
+    lambda += delLambda;
+  }
+
+  return false;
 }
 
 // ***************************************************************************
-bool rrt::u_coll_octomap(Eigen::Vector3d pos1, Eigen::Vector3d pos2)
+bool rrt::u_coll_octomap(Eigen::Vector3d pos)
 {
-}
+  double distObs = octDist_->getDistance ( octomap::point3d( pos(0), pos(1), pos(2) ) );
 
-// ***************************************************************************
-void rrt::update_octomap_dist(DynamicEDTOctomap* octDist)
-{
-  octDist_ = octDist;
+  if ( distObs == DynamicEDTOctomap::distanceValue_Error )
+    return true;
+
+  if ( distObs <= radRob_ )
+    return true;
+
+  return false;
 }
 
 // ***************************************************************************

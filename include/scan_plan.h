@@ -36,6 +36,8 @@ private:
   double rrtRadNear_;
   double rrtDelDist_;
 
+  double radRob_; // max dist to obs to declare collision
+
 public:
   scan_plan(ros::NodeHandle*);
   ~scan_plan();
@@ -44,7 +46,7 @@ public:
   void build_tree(double*, double*, double);
   void init_dist_map();
 
-  void octomap_cb(const octomap_msgs::Octomap);
+  void octomap_cb(const octomap_msgs::Octomap&);
   void test_script();
 };
 

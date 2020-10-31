@@ -35,6 +35,7 @@ private:
   double maxBnds_[3];
 
   double radNear_;
+  double radRob_; // robot radius
 
   // outputs of 'find_near' function, avoiding repeated allocation/deallocation
   std::vector<near_node> nearNds_;
@@ -42,8 +43,10 @@ private:
   DynamicEDTOctomap* octDist_;
  
 public:
-  rrt(int nNodes, double[3], double[3], double, double);
   ~rrt();
+  rrt(int, double[3], double[3], double, double, double, DynamicEDTOctomap*);
+  void init(int, double[3], double[3], double, double, double);
+  
 
   void clear();
   void modify_node(int, Eigen::Vector3d, double, int);
@@ -53,9 +56,8 @@ public:
   int find_nearest(Eigen::Vector3d);
   void find_near(Eigen::Vector3d, double);
   Eigen::Vector3d steer(Eigen::Vector3d, Eigen::Vector3d, double);
-  bool under_collision(Eigen::Vector3d, Eigen::Vector3d);
-  bool u_coll_octomap(Eigen::Vector3d, Eigen::Vector3d);
-  void update_octomap_dist(DynamicEDTOctomap*);
+  bool u_coll(Eigen::Vector3d, Eigen::Vector3d);
+  bool u_coll_octomap(Eigen::Vector3d);
 };
 
 #endif
