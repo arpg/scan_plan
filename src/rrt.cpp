@@ -89,7 +89,10 @@ void rrt::build(Eigen::Vector3d posRoot)
 
     itr++;
     if (itr > failItr_)
+    {
+      std::cout << "No solution found in max iterations!" << std::endl;
       break;
+    }
     if ( u_coll(posNearest, posNew) )
       continue;
     itr = 0;
@@ -151,6 +154,7 @@ void rrt::build(Eigen::Vector3d posRoot)
   } // end while
 
   print_tree();
+  plot_tree();
 
 }
 
@@ -303,9 +307,38 @@ void rrt::print_tree()
     std::cout << "Id: " << i << " Pos: " << posNds_.row(i) << " Parent: " << idPrnts_[i] << " Node Cost: " << cstNds_(i) << std::endl;
   }
 
-  std::cout << "<<<<<<<<<<<< ......... >>>>>>>>>>>>>>>" << std::endl;
+  std::cout << "<<<<<<<<<<<< ........... >>>>>>>>>>>>>>>" << std::endl;
 }
 // ***************************************************************************
+void rrt::plot_tree()
+{
+  std::vector<double> vecX(2);
+  std::vector<double> vecY(2);
+  for (int i=0; i<actNds_; i++)
+  {
+    vecX[0] = posNds_(idPrnts_[i],0); vecX[1] = posNds_(i,0);
+    vecY[0] = posNds_(idPrnts_[i],1); vecY[1] = posNds_(i,1);
+
+    matplotlibcpp::plot(vecX,vecY);
+  }
+
+  //matplotlibcpp::xlim(minBnds_[0], maxBnds_[0]);
+	//matplotlibcpp::ylim(minBnds_[1], maxBnds_[1]);
+  matplotlibcpp::xlim(0, 6);
+	matplotlibcpp::ylim(-6, 6);
+  matplotlibcpp::pause(0.1);
+
+  getchar();
+
+  //double* arrX = posNds_.col(0).head(actNds_).data();
+  //std::vector<double> vecX(arrX, arrX+actNds_);
+
+  //double* arrY = posNds_.col(1).head(actNds_).data();
+  //std::vector<double> vecY(arrY, arrY+actNds_);
+
+  //matplotlibcpp::plot(vecX,vecY);
+	
+}
 // ***************************************************************************
 // ***************************************************************************
 

@@ -10,6 +10,7 @@
 #include <chrono>
 
 #include "dynamicEDT3D/dynamicEDTOctomap.h"
+#include "matplotlib-cpp/matplotlibcpp.h"
 
 // ***************************************************************************
 struct near_node
@@ -65,6 +66,7 @@ public:
   void update_oct_dist(DynamicEDTOctomap*);
   void print_tree();
   void print_near();
+  void plot_tree();
 };
 
 #endif
