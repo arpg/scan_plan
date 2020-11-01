@@ -10,12 +10,11 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   octSub_ = nh->subscribe("octomap_in", 1, &scan_plan::octomap_cb, this);
   pathPub_ = nh->advertise<nav_msgs::Path>("path_out", 10);
 
+  rrtTree_ = new rrt(rrtNNodes_, scanBnds_[0], scanBnds_[1], rrtRadNear_, rrtDelDist_, radRob_, rrtFailItr_, octDist_);
+
   ROS_INFO("%s: Waiting for the input map ...", nh->getNamespace().c_str());
   while( (isInitialized_ & 0x01) != 0x01 )
 	  ros::spinOnce();
-
-  octTree_ = new octomap::OcTree(0.05);
-  rrtTree_ = new rrt(rrtNNodes_, scanBnds_[0], scanBnds_[1], rrtRadNear_, rrtDelDist_, radRob_, octDist_);
 }
 
 // ***************************************************************************
@@ -24,11 +23,13 @@ void scan_plan::wait_for_params(ros::NodeHandle* nh)
 
   //while(!nh->getParam("distance_interval", distInt_));
 
-  rrtNNodes_ = 100;
-  scanBnds_[0][0] = -10; scanBnds_[0][1] = -10; scanBnds_[0][2] = -10;
-  scanBnds_[1][0] = 10; scanBnds_[1][1] = 10; scanBnds_[1][2] = 10;
+  rrtNNodes_ = 50;
+  scanBnds_[0][0] = 0; scanBnds_[0][1] = -10; scanBnds_[0][2] = 0;
+  scanBnds_[1][0] = 10; scanBnds_[1][1] = 10; scanBnds_[1][2] = 2;
+  rrtRadNear_ = 1.5;
   rrtDelDist_ = 0.5;
   radRob_ = 0.1;
+  rrtFailItr_ = 500;
 
   ROS_INFO("%s: Parameters retrieved from parameter server", nh->getNamespace().c_str());
 }
@@ -39,6 +40,7 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 
   ros::Time timeS = ros::Time::now();
 
+  delete octTree_;
   octomap::AbstractOcTree* tree = octomap_msgs::msgToMap(octmpMsg);
   octTree_ = dynamic_cast<octomap::OcTree*>(tree);
 
@@ -83,13 +85,14 @@ void scan_plan::init_dist_map()
   octDist_ = new DynamicEDTOctomap(maxDist, octTree_, min, max, unknownAsOccupied);
 
   octDist_->update(true);  //This computes the distance map
+  std::cout << "Initialized dist map" << std::endl;
 }
 
 // ***************************************************************************
 void scan_plan::test_script()
 {
 // 1. Grow tree, check the nodes, paths, distance of each node from the map
-  
+  rrtTree_->update_oct_dist(octDist_);
   rrtTree_->build(Eigen::Vector3d(0,0,0));
 
   std::cout << "Distance to (0,0,0) is " << octDist_->getDistance (octomap::point3d(0,0,0)) << std::endl;
@@ -110,4 +113,5 @@ scan_plan::~scan_plan()
 {
   delete octTree_;
   delete octDist_;
+  delete rrtTree_;
 }

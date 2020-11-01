@@ -1,14 +1,14 @@
 #include "rrt.h"
 
 // ***************************************************************************
-rrt::rrt(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist, double radRob, DynamicEDTOctomap* octDist)
+rrt::rrt(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist, double radRob, int failItr, DynamicEDTOctomap* octDist)
 {
   octDist_ = octDist;
-  init(nNodes, minBnds, maxBnds, radNear, radRob, delDist);
+  init(nNodes, minBnds, maxBnds, radNear, delDist, radRob, failItr);
 }
 
 // ***************************************************************************
-void rrt::init(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist, double radRob)
+void rrt::init(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist, double radRob, int failItr)
 {
   posNds_.resize(nNodes,3);
   cstNds_.resize(nNodes);
@@ -21,15 +21,19 @@ void rrt::init(int nNodes, double minBnds[3], double maxBnds[3], double radNear,
   nearNds_.reserve(nNodes);
 
   delDist_ = delDist;
-  nNodes = nNodes_;
+  nNodes_ = nNodes;
 
-  radRob_ = radRob*radRob;
+  radRob_ = radRob;
+
+  failItr_ = failItr;
 }
 
 // ***************************************************************************
 void rrt::clear()
 {
+  //std::cout << "Clearing" << std::endl;
   actNds_ = 0;
+  //std::cout << "Cleared" << std::endl;
 }
 
 // ***************************************************************************
@@ -45,7 +49,9 @@ void rrt::modify_node(int idNd, Eigen::Vector3d pos, double cost, int idPrnt)
 // ***************************************************************************
 int rrt::add_node(Eigen::Vector3d pos, double cost, int idPrnt)
 {
+  //std::cout << "Adding node" << std::endl;
   posNds_.row(actNds_) = pos;
+  //std::cout << "Node pos assigned" << std::endl;
  
   cstNds_(actNds_) = cost;
 
@@ -59,22 +65,43 @@ int rrt::add_node(Eigen::Vector3d pos, double cost, int idPrnt)
 // ***************************************************************************
 void rrt::build(Eigen::Vector3d posRoot)
 {
+  //std::cout << "Building tree" << std::endl;
   clear();
   add_node(posRoot, 0, 0);
 
+  //std::cout << "Added root node at position " << posRoot << std::endl;
+
+  int itr = 0;
   while (actNds_ < nNodes_)
   {
+    //print_tree();
     Eigen::Vector3d posRand = rand_pos(minBnds_, maxBnds_);
+    //std::cout << "Drawn random node at position " << posRand.transpose() << std::endl;
 
     int idNearest = find_nearest(posRand);
     Eigen::Vector3d posNearest = posNds_.row(idNearest);
+    //std::cout << "Nearest node found at position " << posNearest.transpose() << std::endl;
 
     Eigen::Vector3d posNew = steer(posNearest, posRand, delDist_);
+    //std::cout << "New node at position " << posNew.transpose() << std::endl;
 
+    //getchar();
+
+    itr++;
+    if (itr > failItr_)
+      break;
     if ( u_coll(posNearest, posNew) )
       continue;
+    itr = 0;
+
+    //std::cout << "Nearest to new line is collision-free" << std::endl;
 
     find_near(posNew, radNear_); // copy idsNear_,pCosts,lCosts_
+    //std::cout << "Found near nodes to the new node" << std::endl;
+
+    //print_near();
+
+    //getchar();
 
     double cstNew = cstNds_(idNearest) + delDist_;    
     int idNew = add_node(posNew, cstNew, idNearest);    
@@ -123,11 +150,28 @@ void rrt::build(Eigen::Vector3d posRoot)
 
   } // end while
 
+  print_tree();
+
 }
 
 // ***************************************************************************
 Eigen::Vector3d rrt::rand_pos(double* min, double* max)
 {
+  std::mt19937 gen(std::chrono::system_clock::now().time_since_epoch().count());
+
+  Eigen::Vector3d pt;
+
+  std::uniform_real_distribution<double> dist_x(min[0], max[0]);
+  pt(0) = dist_x(gen);
+
+  std::uniform_real_distribution<double> dist_y(min[1], max[1]);
+  pt(1) = dist_y(gen);
+
+  std::uniform_real_distribution<double> dist_z(min[2], max[2]);
+  pt(2) = dist_z(gen);
+
+  return pt;
+/*
   srand (time(NULL));
 
   Eigen::Vector3d pt;
@@ -135,7 +179,9 @@ Eigen::Vector3d rrt::rand_pos(double* min, double* max)
   pt(0) = min[0] + (double)rand() / RAND_MAX * (max[0] - min[0]);
   pt(1) = min[1] + (double)rand() / RAND_MAX * (max[1] - min[1]);
   pt(2) = min[2] + (double)rand() / RAND_MAX * (max[2] - min[2]);
+
   return pt;
+*/
 }
 
 // ***************************************************************************
@@ -169,7 +215,7 @@ void rrt::find_near(Eigen::Vector3d posNew, double rad)
     nearNds_.push_back(nearNd);
   }
 
-  // ^ the orders can be reversed in col checks are less expensive than norms
+  // ^ the orders can be reversed if col checks are less expensive than norms
 }
 
 // ***************************************************************************
@@ -210,7 +256,9 @@ bool rrt::u_coll(Eigen::Vector3d pos1, Eigen::Vector3d pos2)
 // ***************************************************************************
 bool rrt::u_coll_octomap(Eigen::Vector3d pos)
 {
+  //std::cout << "Coll check for position" << pos << std::endl;
   double distObs = octDist_->getDistance ( octomap::point3d( pos(0), pos(1), pos(2) ) );
+  //std::cout << "Distance from the map" << distObs << std::endl;
 
   if ( distObs == DynamicEDTOctomap::distanceValue_Error )
     return true;
@@ -222,10 +270,41 @@ bool rrt::u_coll_octomap(Eigen::Vector3d pos)
 }
 
 // ***************************************************************************
-// ***************************************************************************
-// ***************************************************************************
+rrt::~rrt()
+{
+}
 
 // ***************************************************************************
+void rrt::update_oct_dist(DynamicEDTOctomap* octDist)
+{
+  octDist_ = octDist;
+}
+
+// ***************************************************************************
+void rrt::print_near()
+{
+  std::cout << "<<<<<<<<<<<< Near Nodes >>>>>>>>>>>>>>>" << std::endl;
+
+  for (int i=0; i<nearNds_.size(); i++)
+  {
+    std::cout << "Id: " << nearNds_[i].id << " Node Cost: " << nearNds_[i].cstNd << " Line Cost: " << nearNds_[i].cstLnk << std::endl;
+  }
+
+  std::cout << "<<<<<<<<<<<< ......... >>>>>>>>>>>>>>>" << std::endl;
+}
+
+// ***************************************************************************
+void rrt::print_tree()
+{
+  std::cout << "<<<<<<<<<<<< Current Tree >>>>>>>>>>>>>>>" << std::endl;
+
+  for (int i=0; i<actNds_; i++)
+  {
+    std::cout << "Id: " << i << " Pos: " << posNds_.row(i) << " Parent: " << idPrnts_[i] << " Node Cost: " << cstNds_(i) << std::endl;
+  }
+
+  std::cout << "<<<<<<<<<<<< ......... >>>>>>>>>>>>>>>" << std::endl;
+}
 // ***************************************************************************
 // ***************************************************************************
 // ***************************************************************************

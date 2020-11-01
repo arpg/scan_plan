@@ -19,7 +19,6 @@ private:
   ros::NodeHandle* nh_;
   geometry_msgs::PoseArray poseHist_;
   std::vector<ph_cam> phCams_;
-  //rrt tree_;
 
   double scanBnds_[2][3]; // [min,max] x [x,y,z]
 
@@ -37,6 +36,8 @@ private:
   double rrtDelDist_;
 
   double radRob_; // max dist to obs to declare collision
+
+  int rrtFailItr_;
 
 public:
   scan_plan(ros::NodeHandle*);

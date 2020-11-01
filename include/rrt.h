@@ -6,6 +6,8 @@
 //#include <eigen3/Eigen/Geometry>
 #include <eigen3/Eigen/Core>
 #include <vector>
+#include <random>
+#include <chrono>
 
 #include "dynamicEDT3D/dynamicEDTOctomap.h"
 
@@ -41,11 +43,13 @@ private:
   std::vector<near_node> nearNds_;
   
   DynamicEDTOctomap* octDist_;
+
+  int failItr_;
  
 public:
   ~rrt();
-  rrt(int, double[3], double[3], double, double, double, DynamicEDTOctomap*);
-  void init(int, double[3], double[3], double, double, double);
+  rrt(int, double[3], double[3], double, double, double, int, DynamicEDTOctomap*);
+  void init(int, double[3], double[3], double, double, double, int);
   
 
   void clear();
@@ -58,6 +62,9 @@ public:
   Eigen::Vector3d steer(Eigen::Vector3d, Eigen::Vector3d, double);
   bool u_coll(Eigen::Vector3d, Eigen::Vector3d);
   bool u_coll_octomap(Eigen::Vector3d);
+  void update_oct_dist(DynamicEDTOctomap*);
+  void print_tree();
+  void print_near();
 };
 
 #endif
