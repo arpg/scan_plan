@@ -33,6 +33,7 @@ void rrt::clear()
 {
   //std::cout << "Clearing" << std::endl;
   actNds_ = 0;
+  idPrnts_.resize(0);
   //std::cout << "Cleared" << std::endl;
 }
 
@@ -56,10 +57,50 @@ int rrt::add_node(Eigen::Vector3d pos, double cost, int idPrnt)
   cstNds_(actNds_) = cost;
 
   idPrnts_[actNds_] = idPrnt;
-
+  
   actNds_++;
 
   return (actNds_-1);
+}
+
+// ***************************************************************************
+Eigen::MatrixXd rrt::get_path(int idLeaf)
+{
+  if(actNds_ == 0)
+    return Eigen::MatrixXd(0,3);
+
+  Eigen::MatrixXd path(actNds_,3);
+
+  int id = idLeaf;
+  path.row(actNds_-1) = posNds_.row(id);
+
+  if(id == 0)
+    return path.bottomRows(1);
+
+  int itr = actNds_-2;
+  do
+  {
+    id = idPrnts_[id];
+    path.row(itr) = posNds_.row(id);
+    itr = itr - 1;
+  }
+  while(id != 0);
+
+  return path.bottomRows(actNds_-itr-1);
+}
+
+// ***************************************************************************
+std::vector<int> rrt::get_leaves(int actNodes)
+{
+  std::vector<int> idLvs;
+  
+  for(int id=0; id<actNodes; id++)
+  {
+    if(std::find (idPrnts_.begin(), idPrnts_.end(), id) != idPrnts_.end())
+      idLvs.push_back(id);
+  }
+
+  return idLvs;
 }
 
 // ***************************************************************************
@@ -265,7 +306,7 @@ bool rrt::u_coll_octomap(Eigen::Vector3d pos)
   //std::cout << "Distance from the map" << distObs << std::endl;
 
   if ( distObs == DynamicEDTOctomap::distanceValue_Error )
-    return true;
+    return false;
 
   if ( distObs <= radRob_ )
     return true;

@@ -7,8 +7,10 @@
 
   <include file="$(find scan_plan)/launch/octomap.launch"/> -->
 
-  <node name="scan_plan_node" pkg="scan_plan" type="scan_plan_node" output="screen">
+  <node name="scan_plan_node" pkg="scan_plan" type="scan_plan_node" output="screen" clear_params="true">
     <remap from="/scan_plan_node/octomap_in" to="/octomap_binary"/>
+
+    <rosparam command="load" file="$(find scan_plan)/launch/params.yaml" subst_value="true"/>
   </node>
 
 </launch>

@@ -8,6 +8,7 @@
 #include "octomap_msgs/Octomap.h"
 #include "octomap_msgs/conversions.h"
 #include "dynamicEDT3D/dynamicEDTOctomap.h"
+#include "tf2_ros/transform_listener.h"
 //#include "dynamicEDT3D/dynamicEDT3D.h"
 
 // ***************************************************************************
@@ -24,6 +25,18 @@ private:
 
   ros::Subscriber octSub_;
   ros::Publisher pathPub_;
+
+  tf2_ros::Buffer tfBuffer_;
+  tf2_ros::TransformListener* tfListenerPtr_;
+
+  std::string baseFrameId_;
+  std::string worldFrameId_;
+
+  std::vector<geometry_msgs::TransformStamped> camToBase_;
+
+  Eigen::MatrixXd camInfoP_;
+  Eigen::MatrixXd camRes_;
+  std::vector<double> maxDepth_;
 
   rrt* rrtTree_;
   octomap::OcTree* octTree_ = NULL;
@@ -48,6 +61,8 @@ public:
   void init_dist_map();
 
   void octomap_cb(const octomap_msgs::Octomap&);
+  void path_cost(Eigen::MatrixXd&);
+
   void test_script();
 };
 

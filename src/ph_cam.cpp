@@ -1,7 +1,7 @@
 #include "ph_cam.h"
 
 // ***************************************************************************
-ph_cam::ph_cam(double* camInfoP, double* camRes, double maxDepth, geometry_msgs::TransformStamped camToBase)
+ph_cam::ph_cam(double camInfoP[9], double camRes[2], double maxDepth, geometry_msgs::TransformStamped camToBase)
 {
   memcpy(camInfoP_, camInfoP, sizeof(double)*9);
   memcpy(camRes_, camRes, sizeof(int)*2);

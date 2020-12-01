@@ -64,6 +64,8 @@ public:
   bool u_coll(Eigen::Vector3d, Eigen::Vector3d);
   bool u_coll_octomap(Eigen::Vector3d);
   void update_oct_dist(DynamicEDTOctomap*);
+  std::vector<int> get_leaves(int);
+  Eigen::MatrixXd get_path(int);
   void print_tree();
   void print_near();
   void plot_tree();

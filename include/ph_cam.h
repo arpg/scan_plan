@@ -21,7 +21,7 @@ private:
   std::vector<geometry_msgs::Point> polytope_;
 
 public:
-  ph_cam(double*, double*, double, geometry_msgs::TransformStamped);
+  ph_cam(double[9], double[2], double, geometry_msgs::TransformStamped);
   geometry_msgs::Point point2_to_point3(geometry_msgs::Point, bool);
   void compute_polytope();
   std::vector<geometry_msgs::Point> get_polytope();

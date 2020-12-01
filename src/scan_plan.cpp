@@ -5,7 +5,15 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
 {
   isInitialized_ = 0x00;
   nh_ = nh;
+ 
+  tfListenerPtr_ = new tf2_ros::TransformListener(tfBuffer_);
   wait_for_params(nh_);
+
+  ROS_INFO("%s: Waiting for first base to world transform ...", nh_->getNamespace().c_str());
+  while( !tfBuffer_.canTransform(worldFrameId_, baseFrameId_, ros::Time(0)) );
+    geometry_msgs::TransformStamped worldToBase = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
+
+  ph_cam phCam(camInfoP_.row(0).data(), camRes_.row(0).data(), maxDepth_[0], camToBase_[0]);
 
   octSub_ = nh->subscribe("octomap_in", 1, &scan_plan::octomap_cb, this);
   pathPub_ = nh->advertise<nav_msgs::Path>("path_out", 10);
@@ -23,15 +31,52 @@ void scan_plan::wait_for_params(ros::NodeHandle* nh)
 
   //while(!nh->getParam("distance_interval", distInt_));
 
-  rrtNNodes_ = 100;
-  scanBnds_[0][0] = 0; scanBnds_[0][1] = -10; scanBnds_[0][2] = 1;
-  scanBnds_[1][0] = 10; scanBnds_[1][1] = 10; scanBnds_[1][2] = 1.5;
-  rrtRadNear_ = 1.5;
-  rrtDelDist_ = 1.0;
-  radRob_ = 0.5;
-  rrtFailItr_ = 500;
+  while(!nh->getParam("n_rrt_nodes", rrtNNodes_));
+ 
+  std::vector<double> minBnds, maxBnds;
+  while(!nh->getParam("min_bounds", minBnds));
+  while(!nh->getParam("max_bounds", maxBnds));
+  scanBnds_[0][0] = minBnds[0]; scanBnds_[0][1] = minBnds[1]; scanBnds_[0][2] = minBnds[2];
+  scanBnds_[1][0] = maxBnds[0]; scanBnds_[1][1] = maxBnds[1]; scanBnds_[1][2] = maxBnds[2];
+
+  while(!nh->getParam("near_radius_rrt", rrtRadNear_));
+  while(!nh->getParam("delta_distance_rrt", rrtDelDist_));
+  while(!nh->getParam("robot_radius", radRob_));
+  while(!nh->getParam("n_fail_iterations_rrt", rrtFailItr_));
+
+  std::vector<double> maxDepth;
+  while(!nh->getParam("max_depth", maxDepth));
+  int nCams = maxDepth.size();
+
+  std::vector<double> camInfoP;
+  while(!nh->getParam("camera_info_p", camInfoP));
+  camInfoP_.resize(nCams,9);
+  for(int i=0; i<nCams; i++)
+    for(int j=0; j<9; j++)
+      camInfoP_(i,j) = camInfoP[i*9+j];
+
+  std::vector<double> camRes;
+  while(!nh->getParam("camera_resolution", camRes));
+  camRes_.resize(nCams,2);
+  for(int i=0; i<nCams; i++)
+    for(int j=0; j<2; j++)
+      camRes_(i,j) = camRes[i*2+j];
+  
+  while(!nh->getParam("base_frame_id", baseFrameId_));
+  while(!nh->getParam("world_frame_id", worldFrameId_));
+
+  std::vector<std::string> camFrameId;
+  while(!nh->getParam("cam_frame_id", camFrameId));
 
   ROS_INFO("%s: Parameters retrieved from parameter server", nh->getNamespace().c_str());
+
+  for(int i=0; i<maxDepth.size(); i++)
+  {
+    while( !tfBuffer_.canTransform(baseFrameId_, camFrameId[i], ros::Time(0)) );
+      camToBase_.push_back( tfBuffer_.lookupTransform(baseFrameId_, camFrameId[i], ros::Time(0)) );
+  }
+  
+  ROS_INFO("%s: Cam to base transforms received", nh->getNamespace().c_str());
 }
 
 // ***************************************************************************
@@ -93,9 +138,9 @@ void scan_plan::test_script()
 {
 // 1. Grow tree, check the nodes, paths, distance of each node from the map
   rrtTree_->update_oct_dist(octDist_);
-  rrtTree_->build(Eigen::Vector3d(0,0,1.1));
+  rrtTree_->build(Eigen::Vector3d(0.1,0,1.1));
 
-  std::cout << "Distance to (0,0,0) is " << octDist_->getDistance (octomap::point3d(0,0,0)) << std::endl;
+  std::cout << "Distance to (0.1,0,1.1) is " << octDist_->getDistance (octomap::point3d(0,0,0)) << std::endl;
   std::cout << "Distance to (2,0,1) is " << octDist_->getDistance (octomap::point3d(2,0,1)) << std::endl;
 
   //rrtTree_->u_coll_octomap(Eigen::Vector3d(0,0,0));
@@ -103,6 +148,11 @@ void scan_plan::test_script()
 }
 
 // ***************************************************************************
+void scan_plan::path_cost(Eigen::MatrixXd& path)
+{
+  double pathLen = 0;
+}
+
 // ***************************************************************************
 // ***************************************************************************
 // ***************************************************************************

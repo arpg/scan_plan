@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   std_msgs
   octomap_msgs
+  tf2_ros
 )
 
 find_package(Eigen3 REQUIRED)
