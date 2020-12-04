@@ -159,7 +159,7 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
     //disp(idLeaves.size(), "Number of Leaves");
 
     Eigen::MatrixXd minCstpath;
-    double minFovOv = 1000;
+    double minCst = 1000;
     for(int i=0; i<idLeaves.size(); i++)
     {
       Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
@@ -167,18 +167,27 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
       std::vector<geometry_msgs::TransformStamped> phCamsPoses;
       std::vector<ph_cam> phCamsPath = path_ph_cams(path, phCamsPoses);
 
-      //std::cout << path.rows() << "==" << phCamsPath.size();
-     // for(int i=0; i<phCamsPath.size(); i++)
-      //  phCamsPath[i].print_polytope();
+      std::cout << "Path: " << path << std::endl;
+      std::cout << "Headings: ";
+      for(int i=0; i<phCamsPoses.size(); i++)
+        std::cout << quat_to_yaw(phCamsPoses[i].transform.rotation)*180/3.14159 << ", ";
+      std::cout << std::endl;
+
+      //std::cout << path.rows() << "==" << phCamsPath.size() << std::endl;
+      //for(int i=0; i<phCamsPath.size(); i++)
+     //   phCamsPath[i].print_polytope();
  
+      //rrtTree_->plot_path(path);
+      
+
       double fovOv = fov_overlap_cost(phCamsPath);
       double yawCst = heading_cost(phCamsPoses);
       //disp(path, "Path");
-      //disp(fovOv, "FOV Overlap Cost: ");
+      disp(yawCst, "Heading Cost: ");
 
-      if(minFovOv > fovOv)
+      if(minCst > yawCst)
       {
-        minFovOv = yawCst;
+        minCst = yawCst;
         minCstpath = path;
       }
     }
@@ -271,28 +280,30 @@ void scan_plan::test_script()
 // ***************************************************************************
 std::vector<ph_cam> scan_plan::path_ph_cams(Eigen::MatrixXd& path, std::vector<geometry_msgs::TransformStamped>& baseToWorldOut)
 {
-  baseToWorldOut.resize(path.rows()*nCams_);
+  baseToWorldOut.resize(path.rows());
   std::vector<ph_cam> phCamsPath(path.rows()*nCams_, phCamsBase_[0]);
 
   Eigen::Vector3d pos1;
   Eigen::Vector3d pos2;
 
   for(int i=0; i<path.rows()-1; i++)
+  {
+    pos1 = Eigen::Vector3d(path(i,0), path(i,1), path(i,2));
+    pos2 = Eigen::Vector3d(path(i+1,0), path(i+1,1), path(i+1,2));
+    baseToWorldOut[i] = transform_msg(pos1, pos2);
+
     for(int j=0; j<nCams_; j++)
     {
-      pos1 = Eigen::Vector3d(path(i,0), path(i,1), path(i,2));
-      pos2 = Eigen::Vector3d(path(i+1,0), path(i+1,1), path(i+1,2));
-      baseToWorldOut.push_back(transform_msg(pos1, pos2));
-
       phCamsPath[nCams_*i + j] = phCamsBase_[j];
-      phCamsPath[nCams_*i + j].transform(baseToWorldOut.back());
+      phCamsPath[nCams_*i + j].transform(baseToWorldOut[i]);
     }
+  }
 
+  baseToWorldOut[path.rows()-1] = transform_msg(pos1, pos2, false);
   for(int j=0; j<nCams_; j++)
   {
-    baseToWorldOut.push_back(transform_msg(pos1, pos2, false));
     phCamsPath[nCams_*(path.rows()-1) + j] = phCamsBase_[j];
-    phCamsPath[nCams_*(path.rows()-1) + j].transform(baseToWorldOut.back());
+    phCamsPath[nCams_*(path.rows()-1) + j].transform(baseToWorldOut[path.rows()-1]);
   }
 
   return phCamsPath;
@@ -323,14 +334,19 @@ double scan_plan::heading_cost(std::vector<geometry_msgs::TransformStamped>& pat
   double yawMse = 0;
   for(int i=0; i<pathPoses.size(); i++)
   {
+    //disp(quat_to_yaw(pathPoses[i].transform.rotation) , "Yaw Path");
+    //disp(currYaw, "Yaw Curr");
+
     double yawDiff = quat_to_yaw(pathPoses[i].transform.rotation) - currYaw;
 
     if(yawDiff > 3.14159)
       yawDiff = 2*3.14159 - yawDiff;
-    if(yawDiff < 3.14159)
+    if(yawDiff < -3.14159)
       yawDiff = 2*3.14159 + yawDiff;
+
+    //disp(yawDiff*180/3.14159, "Yaw Diff");
     
-    yawMse = yawMse + pow(yawDiff,2);
+    yawMse = yawMse + abs(yawDiff);
   }
 
   return yawMse/pathPoses.size();
