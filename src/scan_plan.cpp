@@ -21,12 +21,6 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
     phCamsBase_[i].print_polytope();
   }
 
-  //std::vector<bool> uColl(13, 0.0);
-  //uColl[10] = true;
-  //uColl[0] = true;
-  //phCam.shrink(uColl);
-  //phCam.print_polytope();
-
   octSub_ = nh->subscribe("octomap_in", 1, &scan_plan::octomap_cb, this);
   pathPub_ = nh->advertise<nav_msgs::Path>("path_out", 10);
 
@@ -87,7 +81,10 @@ void scan_plan::wait_for_params(ros::NodeHandle* nh)
   std::vector<std::string> camFrameId;
   while(!nh->getParam("cam_frame_id", camFrameId));
 
-  std::cout << camFrameId[0] << ", " << baseFrameId_ << std::endl;
+  while(!nh->getParam("time_interval_pose_graph", timeIntPhCam_));
+  while(!nh->getParam("time_interval_replan", timeIntReplan_));
+
+  while(!nh->getParam("c_gain", cGain_));
 
   ROS_INFO("%s: Parameters retrieved from parameter server", nh->getNamespace().c_str());
 
@@ -125,80 +122,65 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   octomap::AbstractOcTree* tree = octomap_msgs::msgToMap(octmpMsg);
   octTree_ = dynamic_cast<octomap::OcTree*>(tree);
 
-  //octTree_ = (octomap::OcTree*)octomap_msgs::binaryMsgToMap(*octmpMsg);
-  //octomap_msgs::readTree<octomap::OcTree> (octTree_, octmpMsg);
+  init_dist_map();
 
   std::cout<<"read in tree, "<<octTree_->getNumLeafNodes()<<" leaves "<<std::endl;
 
+  // place first set of ph_cams at current pose
   if( (isInitialized_ & 0x01) != 0x01 )
   {
-    init_dist_map();
     place_ph_cams();
     isInitialized_ = isInitialized_ | 0x01;
   }
 
-  init_dist_map();
+  // place a set of ph_cams at current pose if timeIntPhCam_ secs have passed
   if( (ros::Time::now() - lastPhCamTime_).toSec() > timeIntPhCam_ )
   {
     place_ph_cams();
 
     phCamsWorld_.back().print_polytope();
     int indx = phCamsWorld_.size()-2;
-    std::cout << std::endl;
-    std::cout << "GJK DISTANCE: " << phCamsWorld_.back().distance(phCamsWorld_[indx]) << std::endl; 
-    std::cout << std::endl;
-
     lastPhCamTime_ = ros::Time::now();
   }
 
-  if( (ros::Time::now() - lastPlanTime_).toSec() > 3.0 )
+  // replan if replanTimeInt_ secs have passed
+  if( (ros::Time::now() - lastPlanTime_).toSec() > timeIntReplan_ )
   {
-    test_script();
-    rrtTree_->plot_tree();
-    std::vector<int> idLeaves = rrtTree_->get_leaves();
-    //disp(idLeaves.size(), "Number of Leaves");
+    update_base_to_world();
+    rrtTree_->update_oct_dist(octDist_);
 
-    Eigen::MatrixXd minCstpath;
-    double minCst = 1000;
+    rrtTree_->build(Eigen::Vector3d(baseToWorld_.transform.translation.x, baseToWorld_.transform.translation.y, baseToWorld_.transform.translation.z));
+
+    std::vector<int> idLeaves = rrtTree_->get_leaves();
+
+    // get all paths ending at leaves and choose one with min cost
+    //Eigen::MatrixXd minCstpath;
+
+    std::vector<geometry_msgs::TransformStamped> minCstpathPoses;
+    double minCst = 10000;
     for(int i=0; i<idLeaves.size(); i++)
     {
       Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
 
-      std::vector<geometry_msgs::TransformStamped> phCamsPoses;
-      std::vector<ph_cam> phCamsPath = path_ph_cams(path, phCamsPoses);
+      std::vector<geometry_msgs::TransformStamped> pathPoses;
+      std::vector<ph_cam> phCamsPath = path_ph_cams(path, pathPoses);
 
-      std::cout << "Path: " << path << std::endl;
-      std::cout << "Headings: ";
-      for(int i=0; i<phCamsPoses.size(); i++)
-        std::cout << quat_to_yaw(phCamsPoses[i].transform.rotation)*180/3.14159 << ", ";
-      std::cout << std::endl;
+      double pathCst = exp(-1*cGain_[0] / heading_diff(pathPoses)) * exp(-1*cGain_[1]*fov_dist(phCamsPath));
 
-      //std::cout << path.rows() << "==" << phCamsPath.size() << std::endl;
-      //for(int i=0; i<phCamsPath.size(); i++)
-     //   phCamsPath[i].print_polytope();
- 
-      //rrtTree_->plot_path(path);
-      
-
-      double fovOv = fov_overlap_cost(phCamsPath);
-      double yawCst = heading_cost(phCamsPoses);
-      //disp(path, "Path");
-      disp(yawCst, "Heading Cost: ");
-
-      if(minCst > yawCst)
+      if(minCst > pathCst)
       {
-        minCst = yawCst;
-        minCstpath = path;
+        minCst = pathCst;
+        minCstpathPoses = pathPoses;
       }
     }
     lastPlanTime_ = ros::Time::now();
-
-    rrtTree_->plot_path(minCstpath);
-    getchar();
+   
+    publish_plan(minCstpathPoses);
+    ros::Duration timeE = ros::Time::now() - timeS;
+    std::cout << "Time Elapsed = " << timeE.toSec() << " sec" << std::endl;
   }
 
-  ros::Duration timeE = ros::Time::now() - timeS;
-  std::cout << "Time Elapsed = " << timeE.toSec() << " sec" << std::endl;
+  
 }
 
 // ***************************************************************************
@@ -312,7 +294,7 @@ std::vector<ph_cam> scan_plan::path_ph_cams(Eigen::MatrixXd& path, std::vector<g
 double scan_plan::nearest(ph_cam phCamIn, std::vector<ph_cam>& phCamLst)
 {
   if(phCamLst.size() == 0)
-    return -1.0;
+    return 0.0;
 
   double minDist = phCamLst[0].distance(phCamIn);
 
@@ -327,7 +309,7 @@ double scan_plan::nearest(ph_cam phCamIn, std::vector<ph_cam>& phCamLst)
 }
 
 // ***************************************************************************
-double scan_plan::heading_cost(std::vector<geometry_msgs::TransformStamped>& pathPoses)
+double scan_plan::heading_diff(std::vector<geometry_msgs::TransformStamped>& pathPoses)
 {
   double currYaw = quat_to_yaw(baseToWorld_.transform.rotation);
 
@@ -353,7 +335,7 @@ double scan_plan::heading_cost(std::vector<geometry_msgs::TransformStamped>& pat
 }
 
 // ***************************************************************************
-double scan_plan::fov_overlap_cost(std::vector<ph_cam>& phCamsPath)
+double scan_plan::fov_dist(std::vector<ph_cam>& phCamsPath)
 {
   double dist = 0;
   for(int i=0; i<phCamsPath.size(); i++)
@@ -410,12 +392,32 @@ geometry_msgs::TransformStamped scan_plan::transform_msg(Eigen::Vector3d pos1, E
 
   Eigen::Vector3d pos = pos2 - pos1;
 
- //std::cout << "Pos1: " << pos1.transpose() << std::endl;
- //std::cout << "Pos2: " << pos2.transpose() << std::endl;
- //std::cout << "Yaw: " << atan2(pos(1), pos(0))*180/3.14159 << std::endl;
   transform.transform.rotation = yaw_to_quat(atan2(pos(1), pos(0)));
 
   return transform;
+}
+
+// ***************************************************************************
+void scan_plan::publish_plan(std::vector<geometry_msgs::TransformStamped>& baseToWorldPath)
+{
+  nav_msgs::Path path;
+
+  path.header.frame_id = worldFrameId_;
+  path.header.stamp = ros::Time::now();
+  path.poses.resize(baseToWorldPath.size());
+
+  for(int i=0; i<baseToWorldPath.size(); i++)
+  {
+    path.poses[i].header.frame_id = path.header.frame_id;
+    path.poses[i].header.stamp = path.header.stamp;
+
+    path.poses[i].pose.position.x = baseToWorldPath[i].transform.translation.x;
+    path.poses[i].pose.position.y = baseToWorldPath[i].transform.translation.y;
+    path.poses[i].pose.position.z = baseToWorldPath[i].transform.translation.z;
+
+    path.poses[i].pose.orientation = baseToWorldPath[i].transform.rotation;
+  }
+  pathPub_.publish(path);
 }
 
 // ***************************************************************************

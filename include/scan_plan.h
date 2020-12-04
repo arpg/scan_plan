@@ -23,7 +23,6 @@ private:
   std::vector<ph_cam> phCamsWorld_; 
   std::vector<ph_cam> phCamsBase_;
   std::vector<ph_cam> phCamsOpt_;
-  double timeIntPhCam_ = 3;
 
   double scanBnds_[2][3]; // [min,max] x [x,y,z]
 
@@ -60,6 +59,11 @@ private:
 
   ros::Time lastPlanTime_;
   ros::Time lastPhCamTime_;
+
+  double timeIntPhCam_;
+  double timeIntReplan_;
+
+  std::vector<double> cGain_;
 public:
   scan_plan(ros::NodeHandle*);
   ~scan_plan();
@@ -80,9 +84,10 @@ public:
   double quat_to_yaw(geometry_msgs::Quaternion);
   double nearest(ph_cam, std::vector<ph_cam>&);
   std::vector<ph_cam> path_ph_cams(Eigen::MatrixXd&, std::vector<geometry_msgs::TransformStamped>&);
-  double fov_overlap_cost(std::vector<ph_cam>& phCamsPath);
-  double heading_cost(std::vector<geometry_msgs::TransformStamped>&);
+  double fov_dist(std::vector<ph_cam>& phCamsPath);
+  double heading_diff(std::vector<geometry_msgs::TransformStamped>&);
 
+  void publish_plan(std::vector<geometry_msgs::TransformStamped>&);
 };
 
 #endif

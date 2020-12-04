@@ -1,4 +1,4 @@
-n_rrt_nodes: 50
+n_rrt_nodes: 250
 
 min_bounds: [0, -10, 1]
 max_bounds: [10, 10, 1.5]
@@ -20,5 +20,12 @@ discretization_interval: [300,200,0.2]
 base_frame_id: iris/base_link
 world_frame_id: world
 cam_frame_id: [iris/vi_sensor/camera_depth_optical_center_link]
+
+# time intervals
+time_interval_pose_graph: 3.0
+time_interval_replan: 3.0
+
+# gains
+c_gain: [1, 0.5]
 
 verbose: true
