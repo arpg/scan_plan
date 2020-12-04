@@ -11,9 +11,21 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
 
   ROS_INFO("%s: Waiting for first base to world transform ...", nh_->getNamespace().c_str());
   while( !tfBuffer_.canTransform(worldFrameId_, baseFrameId_, ros::Time(0)) );
-    geometry_msgs::TransformStamped worldToBase = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
+    geometry_msgs::TransformStamped baseToWorld = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
 
-  ph_cam phCam(camInfoP_.row(0).data(), camRes_.row(0).data(), maxDepth_[0], camToBase_[0]);
+  for(int i=0; i<nCams_; i++)
+  {
+    phCamsOpt_.push_back( ph_cam(camInfoK_.row(i).data(), camRes_.row(i).data(), discInt_.row(i).data()) );
+    phCamsBase_.push_back(phCamsOpt_[i]);
+    phCamsBase_[i].transform(camToBase_[i]);
+    phCamsBase_[i].print_polytope();
+  }
+
+  //std::vector<bool> uColl(13, 0.0);
+  //uColl[10] = true;
+  //uColl[0] = true;
+  //phCam.shrink(uColl);
+  //phCam.print_polytope();
 
   octSub_ = nh->subscribe("octomap_in", 1, &scan_plan::octomap_cb, this);
   pathPub_ = nh->advertise<nav_msgs::Path>("path_out", 10);
@@ -44,23 +56,28 @@ void scan_plan::wait_for_params(ros::NodeHandle* nh)
   while(!nh->getParam("robot_radius", radRob_));
   while(!nh->getParam("n_fail_iterations_rrt", rrtFailItr_));
 
-  std::vector<double> maxDepth;
-  while(!nh->getParam("max_depth", maxDepth));
-  int nCams = maxDepth.size();
-
-  std::vector<double> camInfoP;
-  while(!nh->getParam("camera_info_p", camInfoP));
-  camInfoP_.resize(nCams,9);
-  for(int i=0; i<nCams; i++)
-    for(int j=0; j<9; j++)
-      camInfoP_(i,j) = camInfoP[i*9+j];
-
   std::vector<double> camRes;
   while(!nh->getParam("camera_resolution", camRes));
-  camRes_.resize(nCams,2);
-  for(int i=0; i<nCams; i++)
-    for(int j=0; j<2; j++)
-      camRes_(i,j) = camRes[i*2+j];
+  nCams_ = camRes.size() / 3;
+
+  camRes_.resize(nCams_,3);
+  for(int i=0; i<nCams_; i++)
+    for(int j=0; j<3; j++)
+      camRes_(i,j) = camRes[i*3+j];
+
+  std::vector<double> camInfoK;
+  while(!nh->getParam("camera_info_k", camInfoK));
+  camInfoK_.resize(nCams_,9);
+  for(int i=0; i<nCams_; i++)
+    for(int j=0; j<9; j++)
+      camInfoK_(i,j) = camInfoK[i*9+j];
+
+  std::vector<double> discInt;
+  while(!nh->getParam("discretization_interval", discInt));
+  discInt_.resize(nCams_,3);
+  for(int i=0; i<nCams_; i++)
+    for(int j=0; j<3; j++)
+      discInt_(i,j) = discInt[i*3+j];
   
   while(!nh->getParam("base_frame_id", baseFrameId_));
   while(!nh->getParam("world_frame_id", worldFrameId_));
@@ -68,9 +85,11 @@ void scan_plan::wait_for_params(ros::NodeHandle* nh)
   std::vector<std::string> camFrameId;
   while(!nh->getParam("cam_frame_id", camFrameId));
 
+  std::cout << camFrameId[0] << ", " << baseFrameId_ << std::endl;
+
   ROS_INFO("%s: Parameters retrieved from parameter server", nh->getNamespace().c_str());
 
-  for(int i=0; i<maxDepth.size(); i++)
+  for(int i=0; i<nCams_; i++)
   {
     while( !tfBuffer_.canTransform(baseFrameId_, camFrameId[i], ros::Time(0)) );
       camToBase_.push_back( tfBuffer_.lookupTransform(baseFrameId_, camFrameId[i], ros::Time(0)) );
@@ -96,15 +115,70 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 
   if( (isInitialized_ & 0x01) != 0x01 )
   {
+    init_dist_map();
+    place_ph_cams();
     isInitialized_ = isInitialized_ | 0x01;
   }
-  
+
   init_dist_map();
+  if(ros::Time::now().toSec() - phCamsWorld_.back().time() > timeIntPhCam_)
+  {
+    place_ph_cams();
+
+    phCamsWorld_.back().print_polytope();
+    int indx = phCamsWorld_.size()-2;
+    std::cout << std::endl;
+    std::cout << "GJK DISTANCE: " << phCamsWorld_.back().distance(phCamsWorld_[indx]) << std::endl; 
+    std::cout << std::endl;
+  }
   
   test_script();
 
   ros::Duration timeE = ros::Time::now() - timeS;
   std::cout << "Time Elapsed = " << timeE.toSec() << " sec" << std::endl;
+}
+
+// ***************************************************************************
+void scan_plan::place_ph_cams()
+{
+  geometry_msgs::TransformStamped baseToWorld;
+  try
+  {
+    baseToWorld = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
+
+    for(int i=0; i<nCams_; i++)
+    {    
+      // adding to phCamsWorld_
+      phCamsWorld_.push_back(phCamsBase_[i]);
+      phCamsWorld_.back().transform(baseToWorld);
+      phCamsWorld_.back().set_time(ros::Time::now().toSec());
+      // checking polytope for collision
+      std::vector<geometry_msgs::Point> poly = phCamsWorld_.back().get_polytope();
+      std::vector<bool> uCollVec(poly.size());
+      int falseCount = 0; 
+      for(int i=0; i<poly.size(); i++)
+      {
+        std::cout << poly[i].x << ", " << poly[i].y << ", " << poly[i].z << std::endl;
+        uCollVec[i] = rrt::u_coll_octomap(Eigen::Vector3d(poly[i].x,poly[i].y,poly[i].z), 0.1, octDist_);
+        if(!uCollVec[i])
+          falseCount++;
+      }
+
+      if(falseCount == poly.size())
+        return;
+
+      // reinitializing polytope with collVec
+      phCamsWorld_.back().set_polytope(phCamsOpt_[i].get_polytope());
+      phCamsWorld_.back().shrink(uCollVec);
+      phCamsWorld_.back().transform(camToBase_[i]);
+      phCamsWorld_.back().transform(baseToWorld); 
+    }  
+  }
+  catch(tf2::TransformException &ex)
+	{
+		ROS_WARN("%s",ex.what());
+    return;
+	}
 }
 
 // ***************************************************************************
@@ -148,15 +222,94 @@ void scan_plan::test_script()
 }
 
 // ***************************************************************************
+std::vector<geometry_msgs::Point> scan_plan::path_ph_cams(Eigen::MatrixXd& path)
+{
+  std::vector<ph_cam> phCamsPath(path.rows()*nCams_, phCamsBase_[0]);
+
+  Eigen::Vector3d pos1;
+  Eigen::Vector3d pos2;
+
+  for(int i=0; i<path.rows()-1; i++)
+    for(int j=0; j<nCams_; j++)
+    {
+      pos1 = Eigen::Vector3d(path(i,0), path(i,1), path(i,2));
+      pos2 = Eigen::Vector3d(path(i+1,0), path(i+1,1), path(i+1,2));
+      phCamsPath[nCams_*i + j].transform(transform_msg(pos1, pos2));
+    }
+
+  for(int j=0; j<nCams_; j++)
+    phCamsPath[nCams_*(path.rows()-1) + j].transform(transform_msg(pos1, pos2, false));
+}
+// ***************************************************************************
+double scan_plan::nearest_ph_cam(ph_cam phCamIn, std::vector<ph_cam>& phCamLst)
+{
+  if(phCamLst.size() == 0)
+    return -1.0;
+
+  double minDist = phCamLst[0].distance(phCamIn);
+
+  for(int i=1; i<phCamLst.size(); i++)
+  {
+    double dist = phCamLst[i].distance(phCamIn);
+    if( dist < minDist )
+      minDist = dist;
+  }
+
+  return minDist;
+}
+
+// ***************************************************************************
 void scan_plan::path_cost(Eigen::MatrixXd& path)
 {
   double pathLen = 0;
 }
 
 // ***************************************************************************
+double scan_plan::quat_to_yaw(geometry_msgs::Quaternion quat)
+{
+  tf2::Quaternion tfRot;
+  fromMsg(quat, tfRot);
+
+  double roll, pitch, yaw;
+  tf2::Matrix3x3(tfRot).getRPY(roll, pitch, yaw);
+
+  return yaw;
+}
+
 // ***************************************************************************
+geometry_msgs::Quaternion scan_plan::yaw_to_quat(double yaw)
+{
+  tf2::Quaternion rot;
+  rot.setRPY( 0, 0, yaw );
+  return tf2::toMsg(rot);
+}
+
 // ***************************************************************************
-// ***************************************************************************
+geometry_msgs::TransformStamped scan_plan::transform_msg(Eigen::Vector3d pos1, Eigen::Vector3d pos2, bool loc) 
+{
+  geometry_msgs::TransformStamped transform;
+  transform.header.frame_id = worldFrameId_;
+  transform.child_frame_id = baseFrameId_;
+
+  if(loc)
+  {
+    transform.transform.translation.x = pos1(0);
+    transform.transform.translation.y = pos1(1);
+    transform.transform.translation.z = pos1(2);
+  }
+  else
+  {
+    transform.transform.translation.x = pos2(0);
+    transform.transform.translation.y = pos2(1);
+    transform.transform.translation.z = pos2(2);
+  }
+
+  Eigen::Vector3d pos = pos2 - pos1;
+
+  transform.transform.rotation = yaw_to_quat(atan2(pos(1), pos(0)));
+
+  return transform;
+}
 
 // ***************************************************************************
 scan_plan::~scan_plan()

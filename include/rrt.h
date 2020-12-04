@@ -62,7 +62,7 @@ public:
   void find_near(Eigen::Vector3d, double);
   Eigen::Vector3d steer(Eigen::Vector3d, Eigen::Vector3d, double);
   bool u_coll(Eigen::Vector3d, Eigen::Vector3d);
-  bool u_coll_octomap(Eigen::Vector3d);
+  static bool u_coll_octomap(Eigen::Vector3d, double, DynamicEDTOctomap*);
   void update_oct_dist(DynamicEDTOctomap*);
   std::vector<int> get_leaves(int);
   Eigen::MatrixXd get_path(int);

@@ -19,11 +19,16 @@ private:
 
   ros::NodeHandle* nh_;
   geometry_msgs::PoseArray poseHist_;
-  std::vector<ph_cam> phCams_;
+  int nCams_;
+  std::vector<ph_cam> phCamsWorld_; 
+  std::vector<ph_cam> phCamsBase_;
+  std::vector<ph_cam> phCamsOpt_;
+  double timeIntPhCam_ = 3;
 
   double scanBnds_[2][3]; // [min,max] x [x,y,z]
 
   ros::Subscriber octSub_;
+
   ros::Publisher pathPub_;
 
   tf2_ros::Buffer tfBuffer_;
@@ -34,9 +39,9 @@ private:
 
   std::vector<geometry_msgs::TransformStamped> camToBase_;
 
-  Eigen::MatrixXd camInfoP_;
+  Eigen::MatrixXd camInfoK_;
   Eigen::MatrixXd camRes_;
-  std::vector<double> maxDepth_;
+  Eigen::MatrixXd discInt_;
 
   rrt* rrtTree_;
   octomap::OcTree* octTree_ = NULL;
@@ -64,6 +69,14 @@ public:
   void path_cost(Eigen::MatrixXd&);
 
   void test_script();
+  void place_ph_cams();
+
+  geometry_msgs::TransformStamped transform_msg(Eigen::Vector3d pos1, Eigen::Vector3d pos2, bool loc=true);
+  geometry_msgs::Quaternion yaw_to_quat(double);
+  double quat_to_yaw(geometry_msgs::Quaternion);
+  double nearest_ph_cam(ph_cam, std::vector<ph_cam>&);
+  std::vector<geometry_msgs::Point> path_ph_cams(Eigen::MatrixXd&);
+
 };
 
 #endif

@@ -194,8 +194,8 @@ void rrt::build(Eigen::Vector3d posRoot)
 
   } // end while
 
-  print_tree();
-  plot_tree();
+  //print_tree();
+  //plot_tree();
 
 }
 
@@ -289,7 +289,7 @@ bool rrt::u_coll(Eigen::Vector3d pos1, Eigen::Vector3d pos2)
   {
     pos = (1-lambda)*pos1 + lambda*pos2; 
 
-    if ( u_coll_octomap(pos) )
+    if ( u_coll_octomap(pos, radRob_, octDist_) )
       return true;
 
     lambda += delLambda;
@@ -299,16 +299,16 @@ bool rrt::u_coll(Eigen::Vector3d pos1, Eigen::Vector3d pos2)
 }
 
 // ***************************************************************************
-bool rrt::u_coll_octomap(Eigen::Vector3d pos)
+bool rrt::u_coll_octomap(Eigen::Vector3d pos, double radRob, DynamicEDTOctomap* octDist)
 {
   //std::cout << "Coll check for position" << pos << std::endl;
-  double distObs = octDist_->getDistance ( octomap::point3d( pos(0), pos(1), pos(2) ) );
+  double distObs = octDist->getDistance ( octomap::point3d( pos(0), pos(1), pos(2) ) );
   //std::cout << "Distance from the map" << distObs << std::endl;
 
   if ( distObs == DynamicEDTOctomap::distanceValue_Error )
     return false;
 
-  if ( distObs <= radRob_ )
+  if ( distObs <= radRob )
     return true;
 
   return false;

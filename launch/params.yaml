@@ -7,18 +7,18 @@ near_radius_rrt: 1.5
 
 delta_distance_rrt: 1.0
 
-robot_radius: 0.5 
+robot_radius: 0.5
 
 n_fail_iterations_rrt: 500
 
 # arrays with size proportional to number of cameras
-camera_info_p: 20000
-camera_resolution: 10
-max_depth: [8, 0.4] 
+camera_info_k: [343.15907310693535, 0.0, 320.5, 0.0, 343.15907310693535, 240.5, 0.0, 0.0, 1.0]
+camera_resolution: [640, 480, 1.0]
+discretization_interval: [300,200,0.2]
 
 # frame ids
-base_frame_id: base_frame
+base_frame_id: iris/base_link
 world_frame_id: world
-cam_frame_id: [front_cam]
+cam_frame_id: [iris/vi_sensor/camera_depth_optical_center_link]
 
 verbose: true
