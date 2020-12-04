@@ -8,6 +8,7 @@
 #include <vector>
 #include <random>
 #include <chrono>
+#include "disp.h"
 
 #include "dynamicEDT3D/dynamicEDTOctomap.h"
 #include "matplotlib-cpp/matplotlibcpp.h"
@@ -64,11 +65,12 @@ public:
   bool u_coll(Eigen::Vector3d, Eigen::Vector3d);
   static bool u_coll_octomap(Eigen::Vector3d, double, DynamicEDTOctomap*);
   void update_oct_dist(DynamicEDTOctomap*);
-  std::vector<int> get_leaves(int);
+  std::vector<int> get_leaves();
   Eigen::MatrixXd get_path(int);
   void print_tree();
   void print_near();
   void plot_tree();
+  void plot_path(Eigen::MatrixXd);
 };
 
 #endif

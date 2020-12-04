@@ -1,4 +1,4 @@
-n_rrt_nodes: 100
+n_rrt_nodes: 50
 
 min_bounds: [0, -10, 1]
 max_bounds: [10, 10, 1.5]

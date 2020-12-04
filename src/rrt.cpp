@@ -12,7 +12,7 @@ void rrt::init(int nNodes, double minBnds[3], double maxBnds[3], double radNear,
 {
   posNds_.resize(nNodes,3);
   cstNds_.resize(nNodes);
-  idPrnts_.reserve(nNodes);
+  idPrnts_.resize(nNodes);
 
   std::memcpy(minBnds_, minBnds, sizeof(double)*3);
   std::memcpy(maxBnds_, maxBnds, sizeof(double)*3);
@@ -33,7 +33,7 @@ void rrt::clear()
 {
   //std::cout << "Clearing" << std::endl;
   actNds_ = 0;
-  idPrnts_.resize(0);
+  //idPrnts_.resize(0);
   //std::cout << "Cleared" << std::endl;
 }
 
@@ -66,6 +66,8 @@ int rrt::add_node(Eigen::Vector3d pos, double cost, int idPrnt)
 // ***************************************************************************
 Eigen::MatrixXd rrt::get_path(int idLeaf)
 {
+  //disp(actNds_, "Active Nodes");
+  //disp(idLeaf, "Leaf Id");
   if(actNds_ == 0)
     return Eigen::MatrixXd(0,3);
 
@@ -90,13 +92,14 @@ Eigen::MatrixXd rrt::get_path(int idLeaf)
 }
 
 // ***************************************************************************
-std::vector<int> rrt::get_leaves(int actNodes)
+std::vector<int> rrt::get_leaves()
 {
   std::vector<int> idLvs;
-  
-  for(int id=0; id<actNodes; id++)
+  //disp(idPrnts_, "Parent Ids");
+  //disp(idPrnts_.size(), "Parent Ids Size");
+  for(int id=0; id<actNds_; id++)
   {
-    if(std::find (idPrnts_.begin(), idPrnts_.end(), id) != idPrnts_.end())
+    if(std::find (idPrnts_.begin(), idPrnts_.end(), id) == idPrnts_.end())
       idLvs.push_back(id);
   }
 
@@ -360,16 +363,16 @@ void rrt::plot_tree()
     vecX[0] = posNds_(idPrnts_[i],0); vecX[1] = posNds_(i,0);
     vecY[0] = posNds_(idPrnts_[i],1); vecY[1] = posNds_(i,1);
 
-    matplotlibcpp::plot(vecX,vecY);
+    matplotlibcpp::plot(vecX,vecY, "b--");
   }
 
   //matplotlibcpp::xlim(minBnds_[0], maxBnds_[0]);
 	//matplotlibcpp::ylim(minBnds_[1], maxBnds_[1]);
-  matplotlibcpp::xlim(0, 6);
-	matplotlibcpp::ylim(-6, 6);
+  matplotlibcpp::xlim(0, 10);
+	matplotlibcpp::ylim(-10, 10);
   matplotlibcpp::pause(0.1);
 
-  getchar();
+  //getchar();
 
   //double* arrX = posNds_.col(0).head(actNds_).data();
   //std::vector<double> vecX(arrX, arrX+actNds_);
@@ -381,6 +384,21 @@ void rrt::plot_tree()
 	
 }
 // ***************************************************************************
+void rrt::plot_path(Eigen::MatrixXd path)
+{
+  std::vector<double> vecX(2);
+  std::vector<double> vecY(2);
+  for (int i=0; i<(path.rows()-1); i++)
+  {
+    vecX[0] = path(i,0); vecX[1] = path(i+1,0);
+    vecY[0] = path(i,1); vecY[1] = path(i+1,1);
+
+    matplotlibcpp::plot(vecX,vecY, "r");
+  }
+  matplotlibcpp::pause(0.1);
+}
+// ***************************************************************************
+
 // ***************************************************************************
 
 

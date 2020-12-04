@@ -198,17 +198,6 @@ double ph_cam::distance(ph_cam& phCam)
 
   return dist;
 }
-// ***************************************************************************
-double ph_cam::time()
-{
-  return time_;
-}
-
-// ***************************************************************************
-void ph_cam::set_time(double t)
-{
-  time_ = t;
-}
 
 // ***************************************************************************
 void ph_cam::set_info(double camInfoK[9], double camRes[3], double discInt[3])

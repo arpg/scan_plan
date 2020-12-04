@@ -11,7 +11,7 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
 
   ROS_INFO("%s: Waiting for first base to world transform ...", nh_->getNamespace().c_str());
   while( !tfBuffer_.canTransform(worldFrameId_, baseFrameId_, ros::Time(0)) );
-    geometry_msgs::TransformStamped baseToWorld = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
+    baseToWorld_ = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
 
   for(int i=0; i<nCams_; i++)
   {
@@ -31,6 +31,8 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   pathPub_ = nh->advertise<nav_msgs::Path>("path_out", 10);
 
   rrtTree_ = new rrt(rrtNNodes_, scanBnds_[0], scanBnds_[1], rrtRadNear_, rrtDelDist_, radRob_, rrtFailItr_, octDist_);
+  lastPlanTime_ = ros::Time::now();
+  lastPhCamTime_ = ros::Time::now();
 
   ROS_INFO("%s: Waiting for the input map ...", nh->getNamespace().c_str());
   while( (isInitialized_ & 0x01) != 0x01 )
@@ -99,6 +101,21 @@ void scan_plan::wait_for_params(ros::NodeHandle* nh)
 }
 
 // ***************************************************************************
+bool scan_plan::update_base_to_world()
+{
+  try
+  {
+    baseToWorld_ = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
+    return true;
+  }
+  catch(tf2::TransformException &ex)
+	{
+		ROS_WARN("%s",ex.what());
+    return false;
+	}
+}
+
+// ***************************************************************************
 void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 {
 
@@ -121,7 +138,7 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   }
 
   init_dist_map();
-  if(ros::Time::now().toSec() - phCamsWorld_.back().time() > timeIntPhCam_)
+  if( (ros::Time::now() - lastPhCamTime_).toSec() > timeIntPhCam_ )
   {
     place_ph_cams();
 
@@ -130,9 +147,46 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
     std::cout << std::endl;
     std::cout << "GJK DISTANCE: " << phCamsWorld_.back().distance(phCamsWorld_[indx]) << std::endl; 
     std::cout << std::endl;
+
+    lastPhCamTime_ = ros::Time::now();
   }
-  
-  test_script();
+
+  if( (ros::Time::now() - lastPlanTime_).toSec() > 3.0 )
+  {
+    test_script();
+    rrtTree_->plot_tree();
+    std::vector<int> idLeaves = rrtTree_->get_leaves();
+    //disp(idLeaves.size(), "Number of Leaves");
+
+    Eigen::MatrixXd minCstpath;
+    double minFovOv = 1000;
+    for(int i=0; i<idLeaves.size(); i++)
+    {
+      Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
+
+      std::vector<geometry_msgs::TransformStamped> phCamsPoses;
+      std::vector<ph_cam> phCamsPath = path_ph_cams(path, phCamsPoses);
+
+      //std::cout << path.rows() << "==" << phCamsPath.size();
+     // for(int i=0; i<phCamsPath.size(); i++)
+      //  phCamsPath[i].print_polytope();
+ 
+      double fovOv = fov_overlap_cost(phCamsPath);
+      double yawCst = heading_cost(phCamsPoses);
+      //disp(path, "Path");
+      //disp(fovOv, "FOV Overlap Cost: ");
+
+      if(minFovOv > fovOv)
+      {
+        minFovOv = yawCst;
+        minCstpath = path;
+      }
+    }
+    lastPlanTime_ = ros::Time::now();
+
+    rrtTree_->plot_path(minCstpath);
+    getchar();
+  }
 
   ros::Duration timeE = ros::Time::now() - timeS;
   std::cout << "Time Elapsed = " << timeE.toSec() << " sec" << std::endl;
@@ -141,44 +195,37 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 // ***************************************************************************
 void scan_plan::place_ph_cams()
 {
-  geometry_msgs::TransformStamped baseToWorld;
-  try
-  {
-    baseToWorld = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
-
-    for(int i=0; i<nCams_; i++)
-    {    
-      // adding to phCamsWorld_
-      phCamsWorld_.push_back(phCamsBase_[i]);
-      phCamsWorld_.back().transform(baseToWorld);
-      phCamsWorld_.back().set_time(ros::Time::now().toSec());
-      // checking polytope for collision
-      std::vector<geometry_msgs::Point> poly = phCamsWorld_.back().get_polytope();
-      std::vector<bool> uCollVec(poly.size());
-      int falseCount = 0; 
-      for(int i=0; i<poly.size(); i++)
-      {
-        std::cout << poly[i].x << ", " << poly[i].y << ", " << poly[i].z << std::endl;
-        uCollVec[i] = rrt::u_coll_octomap(Eigen::Vector3d(poly[i].x,poly[i].y,poly[i].z), 0.1, octDist_);
-        if(!uCollVec[i])
-          falseCount++;
-      }
-
-      if(falseCount == poly.size())
-        return;
-
-      // reinitializing polytope with collVec
-      phCamsWorld_.back().set_polytope(phCamsOpt_[i].get_polytope());
-      phCamsWorld_.back().shrink(uCollVec);
-      phCamsWorld_.back().transform(camToBase_[i]);
-      phCamsWorld_.back().transform(baseToWorld); 
-    }  
-  }
-  catch(tf2::TransformException &ex)
-	{
-		ROS_WARN("%s",ex.what());
+  if(!update_base_to_world()) 
     return;
-	}
+
+  baseToWorld_ = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
+
+  for(int i=0; i<nCams_; i++)
+  {    
+    // adding to phCamsWorld_
+    phCamsWorld_.push_back(phCamsBase_[i]);
+    phCamsWorld_.back().transform(baseToWorld_);
+    // checking polytope for collision
+    std::vector<geometry_msgs::Point> poly = phCamsWorld_.back().get_polytope();
+    std::vector<bool> uCollVec(poly.size());
+    int falseCount = 0; 
+    for(int i=0; i<poly.size(); i++)
+    {
+      std::cout << poly[i].x << ", " << poly[i].y << ", " << poly[i].z << std::endl;
+      uCollVec[i] = rrt::u_coll_octomap(Eigen::Vector3d(poly[i].x,poly[i].y,poly[i].z), 0.1, octDist_);
+      if(!uCollVec[i])
+        falseCount++;
+    }
+
+    if(falseCount == poly.size())
+      return;
+
+    // reinitializing polytope with collVec
+    phCamsWorld_.back().set_polytope(phCamsOpt_[i].get_polytope());
+    phCamsWorld_.back().shrink(uCollVec);
+    phCamsWorld_.back().transform(camToBase_[i]);
+    phCamsWorld_.back().transform(baseToWorld_); 
+  } 
 }
 
 // ***************************************************************************
@@ -222,8 +269,9 @@ void scan_plan::test_script()
 }
 
 // ***************************************************************************
-std::vector<geometry_msgs::Point> scan_plan::path_ph_cams(Eigen::MatrixXd& path)
+std::vector<ph_cam> scan_plan::path_ph_cams(Eigen::MatrixXd& path, std::vector<geometry_msgs::TransformStamped>& baseToWorldOut)
 {
+  baseToWorldOut.resize(path.rows()*nCams_);
   std::vector<ph_cam> phCamsPath(path.rows()*nCams_, phCamsBase_[0]);
 
   Eigen::Vector3d pos1;
@@ -234,14 +282,23 @@ std::vector<geometry_msgs::Point> scan_plan::path_ph_cams(Eigen::MatrixXd& path)
     {
       pos1 = Eigen::Vector3d(path(i,0), path(i,1), path(i,2));
       pos2 = Eigen::Vector3d(path(i+1,0), path(i+1,1), path(i+1,2));
-      phCamsPath[nCams_*i + j].transform(transform_msg(pos1, pos2));
+      baseToWorldOut.push_back(transform_msg(pos1, pos2));
+
+      phCamsPath[nCams_*i + j] = phCamsBase_[j];
+      phCamsPath[nCams_*i + j].transform(baseToWorldOut.back());
     }
 
   for(int j=0; j<nCams_; j++)
-    phCamsPath[nCams_*(path.rows()-1) + j].transform(transform_msg(pos1, pos2, false));
+  {
+    baseToWorldOut.push_back(transform_msg(pos1, pos2, false));
+    phCamsPath[nCams_*(path.rows()-1) + j] = phCamsBase_[j];
+    phCamsPath[nCams_*(path.rows()-1) + j].transform(baseToWorldOut.back());
+  }
+
+  return phCamsPath;
 }
 // ***************************************************************************
-double scan_plan::nearest_ph_cam(ph_cam phCamIn, std::vector<ph_cam>& phCamLst)
+double scan_plan::nearest(ph_cam phCamIn, std::vector<ph_cam>& phCamLst)
 {
   if(phCamLst.size() == 0)
     return -1.0;
@@ -256,6 +313,37 @@ double scan_plan::nearest_ph_cam(ph_cam phCamIn, std::vector<ph_cam>& phCamLst)
   }
 
   return minDist;
+}
+
+// ***************************************************************************
+double scan_plan::heading_cost(std::vector<geometry_msgs::TransformStamped>& pathPoses)
+{
+  double currYaw = quat_to_yaw(baseToWorld_.transform.rotation);
+
+  double yawMse = 0;
+  for(int i=0; i<pathPoses.size(); i++)
+  {
+    double yawDiff = quat_to_yaw(pathPoses[i].transform.rotation) - currYaw;
+
+    if(yawDiff > 3.14159)
+      yawDiff = 2*3.14159 - yawDiff;
+    if(yawDiff < 3.14159)
+      yawDiff = 2*3.14159 + yawDiff;
+    
+    yawMse = yawMse + pow(yawDiff,2);
+  }
+
+  return yawMse/pathPoses.size();
+}
+
+// ***************************************************************************
+double scan_plan::fov_overlap_cost(std::vector<ph_cam>& phCamsPath)
+{
+  double dist = 0;
+  for(int i=0; i<phCamsPath.size(); i++)
+   dist = dist + nearest(phCamsPath[i], phCamsWorld_);
+
+  dist = dist / phCamsPath.size();
 }
 
 // ***************************************************************************
@@ -306,6 +394,9 @@ geometry_msgs::TransformStamped scan_plan::transform_msg(Eigen::Vector3d pos1, E
 
   Eigen::Vector3d pos = pos2 - pos1;
 
+ //std::cout << "Pos1: " << pos1.transpose() << std::endl;
+ //std::cout << "Pos2: " << pos2.transpose() << std::endl;
+ //std::cout << "Yaw: " << atan2(pos(1), pos(0))*180/3.14159 << std::endl;
   transform.transform.rotation = yaw_to_quat(atan2(pos(1), pos(0)));
 
   return transform;

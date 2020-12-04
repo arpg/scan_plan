@@ -20,7 +20,6 @@ class ph_cam
 private: 
   double info_[10]; // width, height, depth, discInt[3], fx,cx,fy,cy
   std::vector<geometry_msgs::Point> polytope_;
-  double time_;
 
   void set_info(double camInfoK[9], double camRes[3], double discInt[3]);
   double* get_cam_info();
@@ -38,8 +37,6 @@ public:
   double distance(ph_cam&);
   void shrink(std::vector<bool> uCollVec);
   void print_polytope();
-  double time();
-  void set_time(double);
   void set_polytope(std::vector<geometry_msgs::Point>);
 };
 

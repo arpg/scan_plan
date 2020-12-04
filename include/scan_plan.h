@@ -38,6 +38,7 @@ private:
   std::string worldFrameId_;
 
   std::vector<geometry_msgs::TransformStamped> camToBase_;
+  geometry_msgs::TransformStamped baseToWorld_;
 
   Eigen::MatrixXd camInfoK_;
   Eigen::MatrixXd camRes_;
@@ -57,6 +58,8 @@ private:
 
   int rrtFailItr_;
 
+  ros::Time lastPlanTime_;
+  ros::Time lastPhCamTime_;
 public:
   scan_plan(ros::NodeHandle*);
   ~scan_plan();
@@ -71,11 +74,14 @@ public:
   void test_script();
   void place_ph_cams();
 
+  bool update_base_to_world();
   geometry_msgs::TransformStamped transform_msg(Eigen::Vector3d pos1, Eigen::Vector3d pos2, bool loc=true);
   geometry_msgs::Quaternion yaw_to_quat(double);
   double quat_to_yaw(geometry_msgs::Quaternion);
-  double nearest_ph_cam(ph_cam, std::vector<ph_cam>&);
-  std::vector<geometry_msgs::Point> path_ph_cams(Eigen::MatrixXd&);
+  double nearest(ph_cam, std::vector<ph_cam>&);
+  std::vector<ph_cam> path_ph_cams(Eigen::MatrixXd&, std::vector<geometry_msgs::TransformStamped>&);
+  double fov_overlap_cost(std::vector<ph_cam>& phCamsPath);
+  double heading_cost(std::vector<geometry_msgs::TransformStamped>&);
 
 };
 
