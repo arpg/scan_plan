@@ -23,10 +23,13 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
 
   octSub_ = nh->subscribe("octomap_in", 1, &scan_plan::octomap_cb, this);
   pathPub_ = nh->advertise<nav_msgs::Path>("path_out", 10);
+  lookaheadPub_ = nh->advertise<geometry_msgs::PointStamped>("lookahead_out", 10);
 
   rrtTree_ = new rrt(rrtNNodes_, scanBnds_[0], scanBnds_[1], rrtRadNear_, rrtDelDist_, radRob_, rrtFailItr_, octDist_);
   lastPlanTime_ = ros::Time::now();
   lastPhCamTime_ = ros::Time::now();
+
+  path_.resize(0);
 
   ROS_INFO("%s: Waiting for the input map ...", nh->getNamespace().c_str());
   while( (isInitialized_ & 0x01) != 0x01 )
@@ -85,6 +88,8 @@ void scan_plan::wait_for_params(ros::NodeHandle* nh)
   while(!nh->getParam("time_interval_replan", timeIntReplan_));
 
   while(!nh->getParam("c_gain", cGain_));
+
+  while(!nh->getParam("lookahead_path_len", lookaheadDist_));
 
   ROS_INFO("%s: Parameters retrieved from parameter server", nh->getNamespace().c_str());
 
@@ -156,7 +161,6 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
     // get all paths ending at leaves and choose one with min cost
     //Eigen::MatrixXd minCstpath;
 
-    std::vector<geometry_msgs::TransformStamped> minCstpathPoses;
     double minCst = 10000;
     for(int i=0; i<idLeaves.size(); i++)
     {
@@ -170,17 +174,16 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
       if(minCst > pathCst)
       {
         minCst = pathCst;
-        minCstpathPoses = pathPoses;
+        path_ = pathPoses;
       }
     }
     lastPlanTime_ = ros::Time::now();
    
-    publish_plan(minCstpathPoses);
     ros::Duration timeE = ros::Time::now() - timeS;
     std::cout << "Time Elapsed = " << timeE.toSec() << " sec" << std::endl;
   }
 
-  
+  publish_plan(path_);
 }
 
 // ***************************************************************************
@@ -400,6 +403,10 @@ geometry_msgs::TransformStamped scan_plan::transform_msg(Eigen::Vector3d pos1, E
 // ***************************************************************************
 void scan_plan::publish_plan(std::vector<geometry_msgs::TransformStamped>& baseToWorldPath)
 {
+  if(baseToWorldPath.size() < 2)
+    return;
+
+  // publish path
   nav_msgs::Path path;
 
   path.header.frame_id = worldFrameId_;
@@ -418,6 +425,51 @@ void scan_plan::publish_plan(std::vector<geometry_msgs::TransformStamped>& baseT
     path.poses[i].pose.orientation = baseToWorldPath[i].transform.rotation;
   }
   pathPub_.publish(path);
+
+  // publish lookahead point
+  Eigen::Vector3d pos = point_on_path(baseToWorldPath, lookaheadDist_);
+
+  geometry_msgs::PointStamped lookahead;
+  lookahead.header.frame_id = worldFrameId_;
+  lookahead.header.stamp = ros::Time::now();
+
+  lookahead.point.x = pos(0);
+  lookahead.point.y = pos(1);
+  lookahead.point.z = pos(2);
+
+  lookaheadPub_.publish(lookahead);
+}
+
+// ***************************************************************************
+Eigen::Vector3d scan_plan::point_on_path(std::vector<geometry_msgs::TransformStamped>& baseToWorldPath, double len) // point on path at len path length away
+{
+  Eigen::Vector3d pathPosInit(baseToWorldPath[0].transform.translation.x, 
+                              baseToWorldPath[0].transform.translation.y, 
+                              baseToWorldPath[0].transform.translation.z);
+
+  double delTheta = 0.2;
+  for(int i=0; i<(baseToWorldPath.size()-1); i++)
+  {
+    Eigen::Vector3d pathPos1(baseToWorldPath[i].transform.translation.x, 
+                             baseToWorldPath[i].transform.translation.y, 
+                             baseToWorldPath[i].transform.translation.z);
+
+    Eigen::Vector3d pathPos2(baseToWorldPath[i+1].transform.translation.x, 
+                             baseToWorldPath[i+1].transform.translation.y, 
+                             baseToWorldPath[i+1].transform.translation.z);
+
+    for(double theta=0; theta<=1; theta+=delTheta)
+    {
+      Eigen::Vector3d pos = (1-theta)*pathPos1 + theta*pathPos2;
+
+      if( (pos - pathPosInit).squaredNorm() > len*len)
+        return pos;
+    }
+  }
+
+  return Eigen::Vector3d(baseToWorldPath.back().transform.translation.x, 
+                         baseToWorldPath.back().transform.translation.y, 
+                         baseToWorldPath.back().transform.translation.z);
 }
 
 // ***************************************************************************

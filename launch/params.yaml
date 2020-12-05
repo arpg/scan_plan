@@ -28,4 +28,7 @@ time_interval_replan: 3.0
 # gains
 c_gain: [1, 0.5]
 
+# lookahead point
+lookahead_path_len: 1.0
+
 verbose: true

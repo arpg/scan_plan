@@ -29,6 +29,7 @@ private:
   ros::Subscriber octSub_;
 
   ros::Publisher pathPub_;
+  ros::Publisher lookaheadPub_;
 
   tf2_ros::Buffer tfBuffer_;
   tf2_ros::TransformListener* tfListenerPtr_;
@@ -64,6 +65,10 @@ private:
   double timeIntReplan_;
 
   std::vector<double> cGain_;
+
+  double lookaheadDist_;
+
+  std::vector<geometry_msgs::TransformStamped> path_;
 public:
   scan_plan(ros::NodeHandle*);
   ~scan_plan();
@@ -88,6 +93,7 @@ public:
   double heading_diff(std::vector<geometry_msgs::TransformStamped>&);
 
   void publish_plan(std::vector<geometry_msgs::TransformStamped>&);
+  Eigen::Vector3d point_on_path(std::vector<geometry_msgs::TransformStamped>&, double);
 };
 
 #endif
