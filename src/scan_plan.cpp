@@ -29,7 +29,8 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   lastPlanTime_ = ros::Time::now();
   lastPhCamTime_ = ros::Time::now();
 
-  path_.resize(0);
+  pathPoses_.resize(0);
+  path_.resize(0,0);
 
   ROS_INFO("%s: Waiting for the input map ...", nh->getNamespace().c_str());
   while( (isInitialized_ & 0x01) != 0x01 )
@@ -142,8 +143,15 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   if( (ros::Time::now() - lastPhCamTime_).toSec() > timeIntPhCam_ )
   {
     place_ph_cams();
-
-    phCamsWorld_.back().print_polytope();
+    update_base_to_world();
+    geometry_msgs::Pose currPose;
+    currPose.position.x = baseToWorld_.transform.translation.x;
+    currPose.position.y = baseToWorld_.transform.translation.y;
+    currPose.position.z = baseToWorld_.transform.translation.z;
+    currPose.orientation = baseToWorld_.transform.rotation;
+    poseHist_.poses.push_back(currPose);
+ 
+    //phCamsWorld_.back().print_polytope();
     int indx = phCamsWorld_.size()-2;
     lastPhCamTime_ = ros::Time::now();
   }
@@ -152,6 +160,10 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   if( (ros::Time::now() - lastPlanTime_).toSec() > timeIntReplan_ )
   {
     update_base_to_world();
+
+    double rrtBnds[2][3];
+    get_rrt_bounds(rrtBnds);
+    rrtTree_->set_bounds(rrtBnds[0], rrtBnds[1]);
     rrtTree_->update_oct_dist(octDist_);
 
     rrtTree_->build(Eigen::Vector3d(baseToWorld_.transform.translation.x, baseToWorld_.transform.translation.y, baseToWorld_.transform.translation.z));
@@ -161,6 +173,13 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
     // get all paths ending at leaves and choose one with min cost
     //Eigen::MatrixXd minCstpath;
 
+    double currRobYaw = quat_to_yaw(baseToWorld_.transform.rotation);
+    double currExpYaw = exploration_direction();
+   
+    std::cout << std::endl;
+    disp(currExpYaw*180/3.14159, "EXPLORATION HEADING");
+    std::cout << std::endl;
+
     double minCst = 10000;
     for(int i=0; i<idLeaves.size(); i++)
     {
@@ -169,21 +188,43 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
       std::vector<geometry_msgs::TransformStamped> pathPoses;
       std::vector<ph_cam> phCamsPath = path_ph_cams(path, pathPoses);
 
-      double pathCst = exp(-1*cGain_[0] / heading_diff(pathPoses)) * exp(-1*cGain_[1]*fov_dist(phCamsPath));
+      //double pathCst = exp(-1*cGain_[0] / heading_diff(pathPoses)) * exp(-1*cGain_[1]*fov_dist(phCamsPath));
 
+      double pathCst = cGain_[0] * heading_diff(currExpYaw, pathPoses) + cGain_[1] * heading_diff(currRobYaw, pathPoses) + cGain_[2]*exp(-1*fov_dist(phCamsPath));
       if(minCst > pathCst)
       {
         minCst = pathCst;
-        path_ = pathPoses;
+        pathPoses_ = pathPoses;
+        path_ = path;
       }
     }
     lastPlanTime_ = ros::Time::now();
+
+    //rrtTree_->plot_tree();
+    //rrtTree_->plot_path(path_);
    
+    publish_path();
     ros::Duration timeE = ros::Time::now() - timeS;
     std::cout << "Time Elapsed = " << timeE.toSec() << " sec" << std::endl;
   }
 
-  publish_plan(path_);
+  //publish_lookahead();
+}
+
+// ***************************************************************************
+void scan_plan::get_rrt_bounds(double (&rrtBnds)[2][3])
+{
+  //update_base_to_world();
+  // min bounds
+  double x_min = baseToWorld_.transform.translation.x + scanBnds_[0][0];
+  rrtBnds[0][0] = std::max(x_min, 5.0);
+  rrtBnds[0][1] = baseToWorld_.transform.translation.y + scanBnds_[0][1];
+  rrtBnds[0][2] = baseToWorld_.transform.translation.z + scanBnds_[0][2];
+
+  // max bounds
+  rrtBnds[1][0] = baseToWorld_.transform.translation.x + scanBnds_[1][0];
+  rrtBnds[1][1] = baseToWorld_.transform.translation.y + scanBnds_[1][1];
+  rrtBnds[1][2] = baseToWorld_.transform.translation.z + scanBnds_[1][2];
 }
 
 // ***************************************************************************
@@ -205,7 +246,7 @@ void scan_plan::place_ph_cams()
     int falseCount = 0; 
     for(int i=0; i<poly.size(); i++)
     {
-      std::cout << poly[i].x << ", " << poly[i].y << ", " << poly[i].z << std::endl;
+      //std::cout << poly[i].x << ", " << poly[i].y << ", " << poly[i].z << std::endl;
       uCollVec[i] = rrt::u_coll_octomap(Eigen::Vector3d(poly[i].x,poly[i].y,poly[i].z), 0.1, octDist_);
       if(!uCollVec[i])
         falseCount++;
@@ -229,17 +270,23 @@ void scan_plan::init_dist_map()
 
   // TODO:change to parameters
 
-  double x,y,z;
+  double rrtBnds[2][3];
+  get_rrt_bounds(rrtBnds);
 
-  octTree_->getMetricMin(x,y,z);
-  octomap::point3d min(x, y, z);
+  octomap::point3d min(rrtBnds[0][0], rrtBnds[0][1], rrtBnds[0][2]);
+  octomap::point3d max(rrtBnds[1][0], rrtBnds[1][1], rrtBnds[1][2]);
 
-  octTree_->getMetricMax(x,y,z);
-  octomap::point3d max(x, y, z);
+  //double x,y,z;
+
+  //octTree_->getMetricMin(x,y,z);
+  //octomap::point3d min(x, y, z);
+
+  //octTree_->getMetricMax(x,y,z);
+  //octomap::point3d max(x, y, z);
 
   bool unknownAsOccupied = false;
 
-  float maxDist = 1.0;
+  float maxDist = 5.0;
 
   delete octDist_;
   octDist_ = new DynamicEDTOctomap(maxDist, octTree_, min, max, unknownAsOccupied);
@@ -312,9 +359,9 @@ double scan_plan::nearest(ph_cam phCamIn, std::vector<ph_cam>& phCamLst)
 }
 
 // ***************************************************************************
-double scan_plan::heading_diff(std::vector<geometry_msgs::TransformStamped>& pathPoses)
+double scan_plan::heading_diff(double currYaw, std::vector<geometry_msgs::TransformStamped>& pathPoses)
 {
-  double currYaw = quat_to_yaw(baseToWorld_.transform.rotation);
+  //double currYaw = quat_to_yaw(baseToWorld_.transform.rotation);
 
   double yawMse = 0;
   for(int i=0; i<pathPoses.size(); i++)
@@ -401,9 +448,9 @@ geometry_msgs::TransformStamped scan_plan::transform_msg(Eigen::Vector3d pos1, E
 }
 
 // ***************************************************************************
-void scan_plan::publish_plan(std::vector<geometry_msgs::TransformStamped>& baseToWorldPath)
+void scan_plan::publish_path()
 {
-  if(baseToWorldPath.size() < 2)
+  if(pathPoses_.size() < 2)
     return;
 
   // publish path
@@ -411,24 +458,60 @@ void scan_plan::publish_plan(std::vector<geometry_msgs::TransformStamped>& baseT
 
   path.header.frame_id = worldFrameId_;
   path.header.stamp = ros::Time::now();
-  path.poses.resize(baseToWorldPath.size());
+  path.poses.resize(pathPoses_.size());
 
-  for(int i=0; i<baseToWorldPath.size(); i++)
+  for(int i=0; i<pathPoses_.size(); i++)
   {
     path.poses[i].header.frame_id = path.header.frame_id;
     path.poses[i].header.stamp = path.header.stamp;
 
-    path.poses[i].pose.position.x = baseToWorldPath[i].transform.translation.x;
-    path.poses[i].pose.position.y = baseToWorldPath[i].transform.translation.y;
-    path.poses[i].pose.position.z = baseToWorldPath[i].transform.translation.z;
+    path.poses[i].pose.position.x = pathPoses_[i].transform.translation.x;
+    path.poses[i].pose.position.y = pathPoses_[i].transform.translation.y;
+    path.poses[i].pose.position.z = pathPoses_[i].transform.translation.z;
 
-    path.poses[i].pose.orientation = baseToWorldPath[i].transform.rotation;
+    path.poses[i].pose.orientation = pathPoses_[i].transform.rotation;
   }
   pathPub_.publish(path);
+}
 
+// ***************************************************************************
+void scan_plan::publish_lookahead()
+{
+  if(path_.size() < 2)
+    return;
+
+  //std::cout << "Interpolating" << std::endl;
+  Eigen::MatrixXd path = interpolate(path_, 5);
+
+  //std::cout << "Interpolated" << std::endl;
+  update_base_to_world();
+  Eigen::Vector3d robPos (baseToWorld_.transform.translation.x, 
+                          baseToWorld_.transform.translation.y, 
+                          baseToWorld_.transform.translation.z);
+
+  //std::cout << path << std::endl;
+  //std::cout << "Finding 1 m point" << std::endl;
+  //std::cout << ( (path.rowwise() - robPos.transpose()).rowwise().squaredNorm() ).array()  << std::endl;
+  
+  disp(path.rows(), "Path Size");
+  Eigen::VectorXd distVec = (path.rowwise() - robPos.transpose()).rowwise().squaredNorm(); // distance of each point from robot
+
+  disp(distVec.rows(), "Dist Vector Size");
+  //std::cout <<distVec << std::endl;
+
+  int minDistIndx;
+  distVec.minCoeff(&minDistIndx); // indx of closest point
+  disp(minDistIndx, "Min Dist Indx");
+  int indx; // indx of point 1m from min dist point
+  ( distVec.bottomRows(path.rows()-minDistIndx).array() - pow(lookaheadDist_,2) ).cwiseAbs().minCoeff(&indx);
+
+  indx = indx + minDistIndx;
+
+  disp(indx, "1m Indx");
+
+  std::cout << "Publishing" << indx << std::endl;
+  Eigen::Vector3d pos(path(indx,0), path(indx,1), path(indx,2));
   // publish lookahead point
-  Eigen::Vector3d pos = point_on_path(baseToWorldPath, lookaheadDist_);
-
   geometry_msgs::PointStamped lookahead;
   lookahead.header.frame_id = worldFrameId_;
   lookahead.header.stamp = ros::Time::now();
@@ -437,39 +520,55 @@ void scan_plan::publish_plan(std::vector<geometry_msgs::TransformStamped>& baseT
   lookahead.point.y = pos(1);
   lookahead.point.z = pos(2);
 
-  lookaheadPub_.publish(lookahead);
+  //lookaheadPub_.publish(lookahead);
 }
 
 // ***************************************************************************
-Eigen::Vector3d scan_plan::point_on_path(std::vector<geometry_msgs::TransformStamped>& baseToWorldPath, double len) // point on path at len path length away
+Eigen::MatrixXd scan_plan::interpolate(Eigen::MatrixXd& path, int res) // res: number of points per segment
 {
-  Eigen::Vector3d pathPosInit(baseToWorldPath[0].transform.translation.x, 
-                              baseToWorldPath[0].transform.translation.y, 
-                              baseToWorldPath[0].transform.translation.z);
+  if(path.rows() < 2)
+    return path;
 
-  double delTheta = 0.2;
-  for(int i=0; i<(baseToWorldPath.size()-1); i++)
+  Eigen::MatrixXd pathOut(res*(path.rows()-1)+1, path.cols());
+
+  double delTheta = 1/double(res);
+
+  int count = 0;
+  for(int i=0; i<(path.rows()-1); i++)
   {
-    Eigen::Vector3d pathPos1(baseToWorldPath[i].transform.translation.x, 
-                             baseToWorldPath[i].transform.translation.y, 
-                             baseToWorldPath[i].transform.translation.z);
-
-    Eigen::Vector3d pathPos2(baseToWorldPath[i+1].transform.translation.x, 
-                             baseToWorldPath[i+1].transform.translation.y, 
-                             baseToWorldPath[i+1].transform.translation.z);
-
-    for(double theta=0; theta<=1; theta+=delTheta)
+    for(double theta=0; theta<1; theta+=delTheta)
     {
-      Eigen::Vector3d pos = (1-theta)*pathPos1 + theta*pathPos2;
+      pathOut.row(count) = (1-theta)*path.row(i) + theta*path.row(i+1);
 
-      if( (pos - pathPosInit).squaredNorm() > len*len)
-        return pos;
+      count++;
     }
   }
 
-  return Eigen::Vector3d(baseToWorldPath.back().transform.translation.x, 
-                         baseToWorldPath.back().transform.translation.y, 
-                         baseToWorldPath.back().transform.translation.z);
+  pathOut.bottomRows(1) = path.bottomRows(1);
+  return pathOut;
+}
+
+// ***************************************************************************
+double scan_plan::exploration_direction()
+{
+  int poseHistSize = poseHist_.poses.size();
+
+  if(poseHistSize < 2)
+    return 0.0;
+
+  const int nLastPoses = 10;
+
+  double estYaw = 0;
+
+  int startIndx = std::max(0, poseHistSize -20);
+
+  for(int i=startIndx; i<(poseHistSize-1); i++)
+  {
+    estYaw += std::atan2(poseHist_.poses[i+1].position.y - poseHist_.poses[i].position.y,
+                         poseHist_.poses[i+1].position.x - poseHist_.poses[i].position.x);
+  }
+
+  return estYaw / (poseHistSize-1-startIndx);
 }
 
 // ***************************************************************************

@@ -47,6 +47,8 @@ private:
   DynamicEDTOctomap* octDist_;
 
   int failItr_;
+
+  Eigen::Vector3d posRoot_;
  
 public:
   ~rrt();
@@ -71,6 +73,7 @@ public:
   void print_near();
   void plot_tree();
   void plot_path(Eigen::MatrixXd);
+  void set_bounds(double[3], double[3]);
 };
 
 #endif

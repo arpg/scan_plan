@@ -27,6 +27,12 @@ void rrt::init(int nNodes, double minBnds[3], double maxBnds[3], double radNear,
 
   failItr_ = failItr;
 }
+// ***************************************************************************
+void rrt::set_bounds(double minBnds[3], double maxBnds[3])
+{
+  std::memcpy(minBnds_, minBnds, sizeof(double)*3);
+  std::memcpy(maxBnds_, maxBnds, sizeof(double)*3);
+}
 
 // ***************************************************************************
 void rrt::clear()
@@ -109,6 +115,8 @@ std::vector<int> rrt::get_leaves()
 // ***************************************************************************
 void rrt::build(Eigen::Vector3d posRoot)
 {
+  posRoot_ = posRoot;
+
   //std::cout << "Building tree" << std::endl;
   clear();
   add_node(posRoot, 0, 0);
@@ -292,7 +300,7 @@ bool rrt::u_coll(Eigen::Vector3d pos1, Eigen::Vector3d pos2)
   {
     pos = (1-lambda)*pos1 + lambda*pos2; 
 
-    if ( u_coll_octomap(pos, radRob_, octDist_) )
+    if ( u_coll_octomap(pos, radRob_, octDist_) && (pos - posRoot_).norm() > radRob_ )
       return true;
 
     lambda += delLambda;
@@ -309,7 +317,7 @@ bool rrt::u_coll_octomap(Eigen::Vector3d pos, double radRob, DynamicEDTOctomap* 
   //std::cout << "Distance from the map" << distObs << std::endl;
 
   if ( distObs == DynamicEDTOctomap::distanceValue_Error )
-    return false;
+    return true;
 
   if ( distObs <= radRob )
     return true;
@@ -356,8 +364,11 @@ void rrt::print_tree()
 // ***************************************************************************
 void rrt::plot_tree()
 {
+  matplotlibcpp::show();
+
   std::vector<double> vecX(2);
   std::vector<double> vecY(2);
+
   for (int i=0; i<actNds_; i++)
   {
     vecX[0] = posNds_(idPrnts_[i],0); vecX[1] = posNds_(i,0);
@@ -366,21 +377,10 @@ void rrt::plot_tree()
     matplotlibcpp::plot(vecX,vecY, "b--");
   }
 
-  //matplotlibcpp::xlim(minBnds_[0], maxBnds_[0]);
-	//matplotlibcpp::ylim(minBnds_[1], maxBnds_[1]);
-  matplotlibcpp::xlim(0, 10);
-	matplotlibcpp::ylim(-10, 10);
-  matplotlibcpp::pause(0.1);
+  matplotlibcpp::xlim(minBnds_[0], maxBnds_[0]);
+	matplotlibcpp::ylim(minBnds_[1], maxBnds_[1]);
 
-  //getchar();
-
-  //double* arrX = posNds_.col(0).head(actNds_).data();
-  //std::vector<double> vecX(arrX, arrX+actNds_);
-
-  //double* arrY = posNds_.col(1).head(actNds_).data();
-  //std::vector<double> vecY(arrY, arrY+actNds_);
-
-  //matplotlibcpp::plot(vecX,vecY);
+  matplotlibcpp::show(false);
 	
 }
 // ***************************************************************************
@@ -395,7 +395,7 @@ void rrt::plot_path(Eigen::MatrixXd path)
 
     matplotlibcpp::plot(vecX,vecY, "r");
   }
-  matplotlibcpp::pause(0.1);
+  matplotlibcpp::show(false);
 }
 // ***************************************************************************
 

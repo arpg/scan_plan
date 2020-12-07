@@ -9,6 +9,7 @@
 #include "octomap_msgs/conversions.h"
 #include "dynamicEDT3D/dynamicEDTOctomap.h"
 #include "tf2_ros/transform_listener.h"
+#include "geometry_msgs/PoseArray.h"
 //#include "dynamicEDT3D/dynamicEDT3D.h"
 
 // ***************************************************************************
@@ -68,7 +69,9 @@ private:
 
   double lookaheadDist_;
 
-  std::vector<geometry_msgs::TransformStamped> path_;
+  Eigen::MatrixXd path_;
+  std::vector<geometry_msgs::TransformStamped> pathPoses_;
+
 public:
   scan_plan(ros::NodeHandle*);
   ~scan_plan();
@@ -90,10 +93,14 @@ public:
   double nearest(ph_cam, std::vector<ph_cam>&);
   std::vector<ph_cam> path_ph_cams(Eigen::MatrixXd&, std::vector<geometry_msgs::TransformStamped>&);
   double fov_dist(std::vector<ph_cam>& phCamsPath);
-  double heading_diff(std::vector<geometry_msgs::TransformStamped>&);
+  double heading_diff(double, std::vector<geometry_msgs::TransformStamped>&);
 
-  void publish_plan(std::vector<geometry_msgs::TransformStamped>&);
-  Eigen::Vector3d point_on_path(std::vector<geometry_msgs::TransformStamped>&, double);
+  void publish_lookahead();
+  void publish_path();
+  Eigen::MatrixXd interpolate(Eigen::MatrixXd&, int);
+  void get_rrt_bounds(double (&rrtBnds)[2][3]);
+
+  double exploration_direction();
 };
 
 #endif

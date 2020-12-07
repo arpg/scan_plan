@@ -1,16 +1,49 @@
 <launch>
-<!--
-  <include file="$(find rotors_gazebo)/launch/mav_hovering_example_with_vi_sensor.launch">
-    <arg name="mav_name" value="iris"/>
-    <arg name="world_name" value="basic"/>
-  </include> 
-
-  <include file="$(find scan_plan)/launch/octomap.launch"/> -->
 
   <node name="scan_plan_node" pkg="scan_plan" type="scan_plan_node" output="screen" clear_params="true">
     <remap from="/scan_plan_node/octomap_in" to="/octomap_binary"/>
 
     <rosparam command="load" file="$(find scan_plan)/launch/params.yaml" subst_value="true"/>
   </node>
+
+	<node name="tf_to_pose" pkg="ros_conversions" type="tf_to_pose" output="screen">
+			<remap from="tf_to_pose/pose_topic" to="/A01/ground_truth/pose"/>
+			
+			<param name="tf_target_frame" value="world"/>
+			<param name="tf_source_frame" value="A01/base_link"/>
+			<param name="pose_frame_id" value="world"/>
+			
+			<param name="rate" type="double" value="50.0"/>
+		</node>
+
+  <node name="filter_point_control" pkg="apf_pf" type="goal_to_vel_node" output="screen" clear_params="true">
+    <rosparam command="load" file="$(find scan_plan)/launch/apfc.yaml" subst_value="true"/>
+		<param name="pose_frame_id" value="world"/>
+    <param name="base_frame_id" value="A01/base_link"/>
+			
+		<remap from="~/pose_in" to="/A01/ground_truth/pose"/>
+    <remap from="~/path_in" to="/scan_plan_node/path_out"/>
+			
+		<remap from="~/goal_pt_in" to="/scan_plan_node/lookahead_out"/>	
+		<remap from="~/rep_vec_in" to="filter_point_control/rep_vec_in"/>
+    
+		<remap from="~/twist_out" to="/A01/cmd_vel_stamped"/>
+	</node>
+
+	<node name="twist_to_twiststamped" pkg="ros_conversions" type="twist_to_twiststamped" output="screen">
+			<remap from="twist_to_twiststamped/twist_in" to="twist_to_twiststamped/twist_in"/>
+			<remap from="twist_to_twiststamped/twiststamped_in" to="/A01/cmd_vel_stamped"/>
+			
+			<remap from="twist_to_twiststamped/twist_out" to="/A01/cmd_vel"/>
+			<remap from="twist_to_twiststamped/twiststamped_out" to="twist_to_twiststamped/twiststamped_out"/>
+			
+			<param name="frame_id" value="world"/>
+	</node>
+
+  <node pkg="octomap_volume" type="octomap_volume" name="octomap_volume">
+		
+		<remap from="~/octomap_in" to="/fore/octomap_binary" /> 
+	
+	</node>
 
 </launch>

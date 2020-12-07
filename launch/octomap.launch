@@ -4,9 +4,20 @@
 		
 		<param name="frame_id" type="string" value="world" />
 		
-		<param name="sensor_model/max_range" value="5.0" />
+		<param name="sensor_model/max_range" value="10.0" />
 		
-		<remap from="cloud_in" to="/iris/vi_sensor/camera_depth/depth/points" /> 
+		<remap from="cloud_in" to="/A01/points" /> 
+	
+	</node>
+
+  <node ns="fore" pkg="octomap_server" type="octomap_server_node" name="octomap_server">
+		<param name="resolution" value="0.15" />
+		
+		<param name="frame_id" type="string" value="world" />
+		
+		<param name="sensor_model/max_range" value="2.0" />
+		
+		<remap from="cloud_in" to="/A01/front/depth/points" /> 
 	
 	</node>
 </launch>
