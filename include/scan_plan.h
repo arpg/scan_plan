@@ -10,6 +10,7 @@
 #include "dynamicEDT3D/dynamicEDTOctomap.h"
 #include "tf2_ros/transform_listener.h"
 #include "geometry_msgs/PoseArray.h"
+#include "std_msgs/Float64.h"
 //#include "dynamicEDT3D/dynamicEDT3D.h"
 
 // ***************************************************************************
@@ -31,6 +32,7 @@ private:
 
   ros::Publisher pathPub_;
   ros::Publisher lookaheadPub_;
+  ros::Publisher compTimePub_;
 
   tf2_ros::Buffer tfBuffer_;
   tf2_ros::TransformListener* tfListenerPtr_;
@@ -59,11 +61,8 @@ private:
 
   int rrtFailItr_;
 
-  ros::Time lastPlanTime_;
-  ros::Time lastPhCamTime_;
-
-  double timeIntPhCam_;
-  double timeIntReplan_;
+  ros::Timer timerPhCam_;
+  ros::Timer timerReplan_;
 
   std::vector<double> cGain_;
 
@@ -81,6 +80,9 @@ public:
   void init_dist_map();
 
   void octomap_cb(const octomap_msgs::Octomap&);
+  void timer_replan_cb(const ros::TimerEvent&);
+  void timer_ph_cam_cb(const ros::TimerEvent&);
+
   void path_cost(Eigen::MatrixXd&);
 
   void test_script();
