@@ -1,9 +1,9 @@
-n_rrt_nodes: 500
+n_rrt_nodes: 600
 
-min_bounds: [-10, -10, -1.5]
-max_bounds: [10, 10, 1.5]
+min_bounds: [-10, -10, -2.0]
+max_bounds: [10, 10, 2.0]
 
-near_radius_rrt: 1.5
+near_radius_rrt: 2.0
 
 delta_distance_rrt: 1.0
 
@@ -22,13 +22,16 @@ world_frame_id: world
 cam_frame_id: [A01/base_link/camera_front_optical]
 
 # time intervals
-time_interval_pose_graph: 3.0
-time_interval_replan: 2
+time_interval_pose_graph: 2.0
+time_interval_replan: 3.0
 
-# gains
-c_gain: [1.2, 0.5, 2.0]
+# gains (fov dist, exp heading diff, exp height diff, robot heading diff)
+c_gain: [2.0, 0.8, 1.0, 0.1]
 
 # lookahead point distance
 lookahead_path_len: 2.0
+
+# number of history poses for exploration direction (must be greater than 2)
+n_hist_poses_exploration_dir: 3
 
 verbose: true

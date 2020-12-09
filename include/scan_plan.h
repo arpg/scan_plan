@@ -71,6 +71,8 @@ private:
   Eigen::MatrixXd path_;
   std::vector<geometry_msgs::TransformStamped> pathPoses_;
 
+  int nHistPoses_;
+
 public:
   scan_plan(ros::NodeHandle*);
   ~scan_plan();
@@ -102,7 +104,9 @@ public:
   Eigen::MatrixXd interpolate(Eigen::MatrixXd&, int);
   void get_rrt_bounds(double (&rrtBnds)[2][3]);
 
-  double exploration_direction();
+  double exploration_direction(double&);
+  double path_length(Eigen::MatrixXd& path);
+  double height_diff(double currHeight, Eigen::MatrixXd& path);
 };
 
 #endif

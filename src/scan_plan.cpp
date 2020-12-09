@@ -95,6 +95,7 @@ void scan_plan::wait_for_params(ros::NodeHandle* nh)
   while(!nh->getParam("c_gain", cGain_));
 
   while(!nh->getParam("lookahead_path_len", lookaheadDist_));
+  while(!nh->getParam("n_hist_poses_exploration_dir", nHistPoses_));
 
   ROS_INFO("%s: Parameters retrieved from parameter server", nh->getNamespace().c_str());
 
@@ -159,13 +160,16 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   rrtTree_->build(Eigen::Vector3d(baseToWorld_.transform.translation.x, baseToWorld_.transform.translation.y, baseToWorld_.transform.translation.z));
 
   std::vector<int> idLeaves = rrtTree_->get_leaves();
+  disp(idLeaves.size(), "Number of paths found");
 
   // get all paths ending at leaves and choose one with min cost
   double currRobYaw = quat_to_yaw(baseToWorld_.transform.rotation);
-  double currExpYaw = exploration_direction();
+  double currExpHeight;
+  double currExpYaw = exploration_direction(currExpHeight);
    
   std::cout << std::endl;
   disp(currExpYaw*180/3.14159, "EXPLORATION HEADING");
+  disp(currExpHeight, "EXPLORATION HEIGHT");
   std::cout << std::endl;
 
   double minCst = 10000;
@@ -176,8 +180,12 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
     std::vector<geometry_msgs::TransformStamped> pathPoses;
     std::vector<ph_cam> phCamsPath = path_ph_cams(path, pathPoses);
 
-    double pathCst = cGain_[0] * heading_diff(currExpYaw, pathPoses) + cGain_[1] * heading_diff(currRobYaw, pathPoses) + cGain_[2]*exp(-1*fov_dist(phCamsPath));
-    if(minCst > pathCst)
+    double pathCst = cGain_[0] * exp(-1*fov_dist(phCamsPath))
+                   + cGain_[1] * heading_diff(currExpYaw, pathPoses)
+                   + cGain_[2] * height_diff(currExpHeight, path)
+                   + cGain_[3] * heading_diff(currRobYaw, pathPoses);
+
+    if( minCst > pathCst && path_length(path) > (radRob_+0.1) )
     {
       minCst = pathCst;
       pathPoses_ = pathPoses;
@@ -216,7 +224,7 @@ void scan_plan::get_rrt_bounds(double (&rrtBnds)[2][3])
   //update_base_to_world();
   // min bounds
   double x_min = baseToWorld_.transform.translation.x + scanBnds_[0][0];
-  rrtBnds[0][0] = std::max(x_min, 5.0);
+  rrtBnds[0][0] = std::max(x_min, x_min);
   rrtBnds[0][1] = baseToWorld_.transform.translation.y + scanBnds_[0][1];
   rrtBnds[0][2] = baseToWorld_.transform.translation.z + scanBnds_[0][2];
 
@@ -360,27 +368,34 @@ double scan_plan::nearest(ph_cam phCamIn, std::vector<ph_cam>& phCamLst)
 // ***************************************************************************
 double scan_plan::heading_diff(double currYaw, std::vector<geometry_msgs::TransformStamped>& pathPoses)
 {
-  //double currYaw = quat_to_yaw(baseToWorld_.transform.rotation);
+  const double discountFactor = 0.7;
 
   double yawMse = 0;
   for(int i=0; i<pathPoses.size(); i++)
   {
-    //disp(quat_to_yaw(pathPoses[i].transform.rotation) , "Yaw Path");
-    //disp(currYaw, "Yaw Curr");
-
     double yawDiff = quat_to_yaw(pathPoses[i].transform.rotation) - currYaw;
 
     if(yawDiff > 3.14159)
       yawDiff = 2*3.14159 - yawDiff;
     if(yawDiff < -3.14159)
       yawDiff = 2*3.14159 + yawDiff;
-
-    //disp(yawDiff*180/3.14159, "Yaw Diff");
     
-    yawMse = yawMse + abs(yawDiff);
+    yawMse = yawMse + abs(yawDiff)*pow(discountFactor,i);
   }
 
-  return yawMse/pathPoses.size();
+  return yawMse; //pathPoses.size();
+}
+
+// ***************************************************************************
+double scan_plan::height_diff(double currHeight, Eigen::MatrixXd& path)
+{
+  double absHeightErr = 0;
+  for(int i=0; i<path.rows(); i++)
+  {
+    absHeightErr += abs( path(i,2) - currHeight );
+  }
+
+  return absHeightErr/path.rows();
 }
 
 // ***************************************************************************
@@ -548,27 +563,40 @@ Eigen::MatrixXd scan_plan::interpolate(Eigen::MatrixXd& path, int res) // res: n
 }
 
 // ***************************************************************************
-double scan_plan::exploration_direction()
+double scan_plan::exploration_direction(double& avgHeight)
 {
-  int poseHistSize = poseHist_.poses.size();
+  const int poseHistSize = poseHist_.poses.size();
+  const int nLastPoses = nHistPoses_;
 
-  if(poseHistSize < 2)
+  if(poseHistSize < 2 || nLastPoses < 2)
     return 0.0;
 
-  const int nLastPoses = 10;
-
   Eigen::Vector3d estDirVec(0,0,0);
+  avgHeight = 0;
 
-  int startIndx = std::max(0, poseHistSize - 20);
+  int startIndx = std::max(0, poseHistSize - nLastPoses);
 
   for(int i=startIndx; i<(poseHistSize-1); i++)
   {
     estDirVec += Eigen::Vector3d (poseHist_.poses[i+1].position.x - poseHist_.poses[i].position.x,
                                   poseHist_.poses[i+1].position.y - poseHist_.poses[i].position.y,
                                   poseHist_.poses[i+1].position.z - poseHist_.poses[i].position.z) . normalized();
+
+    avgHeight += poseHist_.poses[i].position.z;
   }
+  avgHeight += poseHist_.poses[poseHistSize-1].position.z;
+  avgHeight = avgHeight / double(poseHistSize);
 
   return std::atan2(estDirVec(1), estDirVec(0));
+}
+
+// ***************************************************************************
+double scan_plan::path_length(Eigen::MatrixXd& path)
+{
+  if(path.rows() == 0)
+    return 0;
+
+  return double(path.rows()-1)*rrtDelDist_;
 }
 
 // ***************************************************************************
