@@ -26,12 +26,12 @@ time_interval_pose_graph: 2.0
 time_interval_replan: 3.0
 
 # gains (fov dist, exp heading diff, exp height diff, robot heading diff)
-c_gain: [2.0, 0.8, 1.0, 0.1]
+c_gain: [2.2, 0.8, 1.0, 0.1]
 
 # lookahead point distance
 lookahead_path_len: 2.0
 
 # number of history poses for exploration direction (must be greater than 2)
-n_hist_poses_exploration_dir: 3
+n_hist_poses_exploration_dir: 8
 
 verbose: true
