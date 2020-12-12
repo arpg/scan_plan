@@ -129,6 +129,21 @@ void scan_plan::timer_ph_cam_cb(const ros::TimerEvent&)
   if( (isInitialized_ & 0x01) != 0x01 )
     return;
 
+  update_base_to_world();
+
+  if( (isInitialized_ & 0x02) == 0x02 )
+  {
+    Eigen::Vector3d currPos(baseToWorld_.transform.translation.x,
+                            baseToWorld_.transform.translation.y,
+                            baseToWorld_.transform.translation.z);
+    Eigen::Vector3d lastPos(poseHist_.poses.back().position.x,
+                            poseHist_.poses.back().position.y,
+                            poseHist_.poses.back().position.z);
+
+    if( (currPos-lastPos).norm() < 1.0) // 1.0 is distance between two poses in history, TODO: make it param
+      return;
+  }
+
   if( (isInitialized_ & 0x02) != 0x02 )
     isInitialized_ = isInitialized_ | 0x02;
 

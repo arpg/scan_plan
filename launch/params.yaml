@@ -22,7 +22,7 @@ world_frame_id: world
 cam_frame_id: [A01/base_link/camera_front_optical]
 
 # time intervals
-time_interval_pose_graph: 2.0
+time_interval_pose_graph: 0.1
 time_interval_replan: 3.0
 
 # gains (fov dist, exp heading diff, exp height diff, robot heading diff)
