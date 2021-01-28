@@ -34,4 +34,7 @@ lookahead_path_len: 2.0
 # number of history poses for exploration direction (must be greater than 2)
 n_hist_poses_exploration_dir: 8
 
+# minimum explored volume rate to trigger mode change to a frontier
+min_explored_volume_rate: 0.5
+
 verbose: true

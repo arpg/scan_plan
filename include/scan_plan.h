@@ -63,6 +63,7 @@ private:
 
   ros::Timer timerPhCam_;
   ros::Timer timerReplan_;
+  double timerReplanPeriod_;
 
   std::vector<double> cGain_;
 
@@ -72,6 +73,9 @@ private:
   std::vector<geometry_msgs::TransformStamped> pathPoses_;
 
   int nHistPoses_;
+
+  double expVol_; // explored volume
+  double minExpVolRate_; // explored volume rate
 
 public:
   scan_plan(ros::NodeHandle*);
@@ -107,6 +111,10 @@ public:
   double exploration_direction(double&);
   double path_length(Eigen::MatrixXd& path);
   double height_diff(double currHeight, Eigen::MatrixXd& path);
+
+  void plan_frontier_mode();
+  void plan_pose_graph_mode();
+  std::vector<std::vector<octomap::point3d>> get_frontier_groups(const octomap::OcTree*);
 };
 
 #endif

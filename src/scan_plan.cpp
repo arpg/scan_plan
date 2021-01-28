@@ -9,6 +9,8 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   tfListenerPtr_ = new tf2_ros::TransformListener(tfBuffer_);
   wait_for_params(nh_);
 
+  expVol_ = 0;
+
   ROS_INFO("%s: Waiting for first base to world transform ...", nh_->getNamespace().c_str());
   while( !tfBuffer_.canTransform(worldFrameId_, baseFrameId_, ros::Time(0)) );
     baseToWorld_ = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
@@ -91,6 +93,7 @@ void scan_plan::wait_for_params(ros::NodeHandle* nh)
 
   timerPhCam_ = nh->createTimer(ros::Duration(timeIntPhCam), &scan_plan::timer_ph_cam_cb, this);
   timerReplan_ = nh->createTimer(ros::Duration(timeIntReplan), &scan_plan::timer_replan_cb, this);
+  timerReplanPeriod_ = timeIntReplan;
 
   while(!nh->getParam("c_gain", cGain_));
 
@@ -105,6 +108,8 @@ void scan_plan::wait_for_params(ros::NodeHandle* nh)
       camToBase_.push_back( tfBuffer_.lookupTransform(baseFrameId_, camFrameId[i], ros::Time(0)) );
   }
   
+  while(!nh->getParam("min_explored_volume_rate", minExpVolRate_));
+
   ROS_INFO("%s: Cam to base transforms received", nh->getNamespace().c_str());
 }
 
@@ -165,8 +170,73 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 
   ros::Time timeS = ros::Time::now();
 
+  double exploredVol = octTree_->getNumLeafNodes() * pow(octTree_->getResolution(),3);
+  double exploredVolRate = (exploredVol - expVol_) / timerReplanPeriod_;
+  expVol_ = exploredVol;
+  
+  if(exploredVolRate >= minExpVolRate_)
+    plan_pose_graph_mode();
+  else
+    plan_frontier_mode();
+
   update_base_to_world();
 
+  ros::Duration timeE = ros::Time::now() - timeS;
+
+  publish_path();
+
+  std_msgs::Float64 computeTimeMsg;
+  computeTimeMsg.data = timeE.toSec();
+  compTimePub_.publish(computeTimeMsg);
+
+  
+  std::cout << "Replan Compute Time = " << computeTimeMsg.data << " sec" << std::endl;
+}
+
+// ***************************************************************************
+void scan_plan::plan_frontier_mode()
+{
+  std::vector<std::vector<octomap::point3d>> frontierGroups = get_frontier_groups(octTree_);
+
+  if (frontierGroups.size() < 1)
+    return;
+
+  int largestGroupIndx = 0;
+  int largestGroupSize = frontierGroups[0].size();
+
+  for (int i=1; i<frontierGroups.size(); i++)
+    if (frontierGroups[i].size() > largestGroupSize)
+    {
+      largestGroupSize = frontierGroups[i].size();
+      largestGroupIndx = i;
+    }
+
+  double distToFrontier = pow(baseToWorld_.transform.translation.x - frontierGroups[largestGroupIndx][0].x(), 2) +
+                          pow(baseToWorld_.transform.translation.y - frontierGroups[largestGroupIndx][0].y(), 2) +
+                          pow(baseToWorld_.transform.translation.z - frontierGroups[largestGroupIndx][0].z(), 2);
+  distToFrontier = sqrt(distToFrontier);
+
+  double rrtBnds[2][3];
+  rrtBnds[0][0] = baseToWorld_.transform.translation.x - distToFrontier;
+  rrtBnds[0][1] = baseToWorld_.transform.translation.y - distToFrontier;
+  rrtBnds[0][2] = baseToWorld_.transform.translation.z - distToFrontier;
+
+  rrtBnds[1][0] = baseToWorld_.transform.translation.x + distToFrontier;
+  rrtBnds[1][1] = baseToWorld_.transform.translation.y + distToFrontier;
+  rrtBnds[1][2] = baseToWorld_.transform.translation.z + distToFrontier;
+
+  rrtTree_->set_bounds(rrtBnds[0], rrtBnds[1]);
+  rrtTree_->update_oct_dist(octDist_);
+
+  int goalLeaf = rrtTree_->build( Eigen::Vector3d(baseToWorld_.transform.translation.x, baseToWorld_.transform.translation.y, baseToWorld_.transform.translation.z),
+                                  Eigen::Vector3d(frontierGroups[largestGroupIndx][0].x(), frontierGroups[largestGroupIndx][0].y(), frontierGroups[largestGroupIndx][0].z()) );
+
+  path_ = rrtTree_->get_path(goalLeaf);
+}
+
+// ***************************************************************************
+void scan_plan::plan_pose_graph_mode()
+{
   double rrtBnds[2][3];
   get_rrt_bounds(rrtBnds);
   rrtTree_->set_bounds(rrtBnds[0], rrtBnds[1]);
@@ -207,17 +277,6 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
       path_ = path;
     }
   }
-   
-  ros::Duration timeE = ros::Time::now() - timeS;
-
-  publish_path();
-
-  std_msgs::Float64 computeTimeMsg;
-  computeTimeMsg.data = timeE.toSec();
-  compTimePub_.publish(computeTimeMsg);
-
-  
-  std::cout << "Replan Compute Time = " << computeTimeMsg.data << " sec" << std::endl;
 }
 
 // ***************************************************************************
@@ -612,6 +671,81 @@ double scan_plan::path_length(Eigen::MatrixXd& path)
     return 0;
 
   return double(path.rows()-1)*rrtDelDist_;
+}
+
+// ***************************************************************************
+std::vector<std::vector<octomap::point3d>> scan_plan::get_frontier_groups(const octomap::OcTree *octree) 
+{
+  std::vector<std::vector<octomap::point3d>> frontier_groups;
+  std::vector<octomap::point3d> frontier_points;
+  octomap::OcTreeNode *n_cur_frontier;
+  bool frontier_true;         // whether or not a frontier point
+  bool belong_old;            //whether or not belong to old group
+  double distance;
+  double R1 = 0.4;            //group size
+  double x_cur, y_cur, z_cur;
+
+  double octo_reso = octTree_->getResolution();
+
+  for(octomap::OcTree::leaf_iterator n = octree->begin_leafs(octree->getTreeDepth()); n != octree->end_leafs(); ++n)
+  {
+      frontier_true = false;
+      unsigned long int num_free = 0; //number of free cube around frontier, for filtering out fake frontier
+
+    if(!octree->isNodeOccupied(*n))
+      {
+       x_cur = n.getX();
+       y_cur = n.getY();
+       z_cur = n.getZ();
+
+       if(z_cur < 0.4)    continue;
+       if(z_cur > 0.4 + octo_reso)    continue;
+       //if there are unknown around the cube, the cube is frontier
+       for (double x_cur_buf = x_cur - octo_reso; x_cur_buf < x_cur + octo_reso; x_cur_buf += octo_reso)
+           for (double y_cur_buf = y_cur - octo_reso; y_cur_buf < y_cur + octo_reso; y_cur_buf += octo_reso)
+          {
+              n_cur_frontier = octree->search(octomap::point3d(x_cur_buf, y_cur_buf, z_cur));
+              if(!n_cur_frontier)
+              {
+                  frontier_true = true;
+                  continue;            
+              }
+
+          }
+          if(frontier_true)// && num_free >5 )
+          {
+              // divide frontier points into groups
+              if(frontier_groups.size() < 1)
+              {
+                  frontier_points.resize(1);
+                  frontier_points[0] = octomap::point3d(x_cur,y_cur,z_cur);
+                  frontier_groups.push_back(frontier_points);
+                  frontier_points.clear();
+              }
+              else
+              {
+                  bool belong_old = false;            
+
+                  for(std::vector<std::vector<octomap::point3d>>::size_type u = 0; u < frontier_groups.size(); u++){
+                          distance = sqrt(pow(frontier_groups[u][0].x()-x_cur, 2)+pow(frontier_groups[u][0].y()-y_cur, 2)) ;
+                          if(distance < R1){
+                             frontier_groups[u].push_back(octomap::point3d(x_cur, y_cur, z_cur));
+                             belong_old = true;
+                             break;
+                          }
+                  }
+                  if(!belong_old){
+                             frontier_points.resize(1);
+                             frontier_points[0] = octomap::point3d(x_cur, y_cur, z_cur);
+                             frontier_groups.push_back(frontier_points);
+                             frontier_points.clear();
+                  }                              
+              }
+          } 
+      }
+        
+  }
+  return frontier_groups;
 }
 
 // ***************************************************************************
