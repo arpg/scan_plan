@@ -115,6 +115,12 @@ std::vector<int> rrt::get_leaves()
 // ***************************************************************************
 void rrt::build(Eigen::Vector3d posRoot)
 {
+  build(posRoot, posRoot);
+}
+
+// ***************************************************************************
+int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
+{
   posRoot_ = posRoot;
 
   //std::cout << "Building tree" << std::endl;
@@ -127,7 +133,12 @@ void rrt::build(Eigen::Vector3d posRoot)
   while (actNds_ < nNodes_)
   {
     //print_tree();
-    Eigen::Vector3d posRand = rand_pos(minBnds_, maxBnds_);
+
+    Eigen::Vector3d posRand;
+    if (posRoot != posGoal)
+      posRand = rand_pos(minBnds_, maxBnds_, posGoal);
+    else
+      posRand = rand_pos(minBnds_, maxBnds_);
     //std::cout << "Drawn random node at position " << posRand.transpose() << std::endl;
 
     int idNearest = find_nearest(posRand);
@@ -203,11 +214,28 @@ void rrt::build(Eigen::Vector3d posRoot)
       }
     }
 
+    if (posRoot != posGoal && (posNds_.row(actNds_-1).transpose() - posGoal).squaredNorm() < radRob_*4 ) // assuming succRad = radRob_*4
+      return actNds_-1;
+
   } // end while
 
   //print_tree();
   //plot_tree();
+  return actNds_-1;
+}
 
+// ***************************************************************************
+Eigen::Vector3d rrt::rand_pos(double* min, double* max, Eigen::Vector3d posGoal)
+{
+  const double epsilon = 0.95;
+
+  std::mt19937 gen(std::chrono::system_clock::now().time_since_epoch().count());
+  std::uniform_real_distribution<double> dist(0, 1);
+
+  if (dist(gen) >= epsilon)
+    return posGoal;
+  else
+    return rand_pos(min, max);
 }
 
 // ***************************************************************************
