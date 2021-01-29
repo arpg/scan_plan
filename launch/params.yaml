@@ -35,6 +35,6 @@ lookahead_path_len: 2.0
 n_hist_poses_exploration_dir: 8
 
 # minimum explored volume rate to trigger mode change to a frontier
-min_explored_volume_rate: 0.5
+min_explored_volume_rate: 1.5
 
 verbose: true

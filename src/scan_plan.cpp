@@ -28,6 +28,7 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   pathPub_ = nh->advertise<nav_msgs::Path>("path_out", 10);
   lookaheadPub_ = nh->advertise<geometry_msgs::PointStamped>("lookahead_out", 10);
   compTimePub_ = nh->advertise<std_msgs::Float64>("compute_time_out", 10);
+  modePub_ = nh_->advertise<std_msgs::String>("mode_out", 10);
 
   rrtTree_ = new rrt(rrtNNodes_, scanBnds_[0], scanBnds_[1], rrtRadNear_, rrtDelDist_, radRob_, rrtFailItr_, octDist_);
 
@@ -174,10 +175,18 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   double exploredVolRate = (exploredVol - expVol_) / timerReplanPeriod_;
   expVol_ = exploredVol;
   
+  std_msgs::String modeMsg;
   if(exploredVolRate >= minExpVolRate_)
+  {
     plan_pose_graph_mode();
+    modeMsg.data = "pose_graph";
+  }
   else
+  {
     plan_frontier_mode();
+    modeMsg.data = "frontier";
+  }
+  modePub_.publish(modeMsg);
 
   update_base_to_world();
 

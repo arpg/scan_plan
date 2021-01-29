@@ -221,7 +221,7 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
 
   //print_tree();
   //plot_tree();
-
+  return actNds_-1;
 }
 
 // ***************************************************************************
