@@ -62,7 +62,7 @@ public:
   void build(Eigen::Vector3d);
   int build(const Eigen::Vector3d, const Eigen::Vector3d);
   Eigen::Vector3d rand_pos(double*, double*);
-  Eigen::Vector3d rand_pos(double* min, double* max, Eigen::Vector3d posGoal);
+  Eigen::Vector3d rand_pos(double*, double*, Eigen::Vector3d);
   int find_nearest(Eigen::Vector3d);
   void find_near(Eigen::Vector3d, double);
   Eigen::Vector3d steer(Eigen::Vector3d, Eigen::Vector3d, double);
