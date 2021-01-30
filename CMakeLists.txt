@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 find_package(Eigen3 REQUIRED)
+find_package(Boost REQUIRED)
 find_package(octomap REQUIRED)
 find_package(dynamicEDT3D REQUIRED)
 find_package(PythonLibs REQUIRED)
@@ -128,6 +129,7 @@ catkin_package(
 include_directories(
   include
   /usr/local/openGJK
+  ${Boost_INCLUDE_DIRS}
   ${OCTOMAP_INCLUDE_DIRS}
   ${DYNAMICEDT3D_INCLUDE_DIRS}
   #/home/shakeeb/octomap/dynamicEDT3D/include
@@ -145,6 +147,10 @@ include_directories(
  add_library(rrt
    src/rrt.cpp
  )
+ add_library(graph
+   src/graph.cpp
+ )
+
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -152,6 +158,7 @@ include_directories(
  add_dependencies(scan_plan ${catkin_EXPORTED_TARGETS})
  add_dependencies(ph_cam ${catkin_EXPORTED_TARGETS})
  add_dependencies(rrt ${catkin_EXPORTED_TARGETS})
+ add_dependencies(graph ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
@@ -171,8 +178,9 @@ include_directories(
 #target_include_directories(rrt PRIVATE ${PYTHON_INCLUDE_DIRS})
 ## Specify libraries to link a library or executable target against
  target_link_libraries(rrt ${catkin_LIBRARIES} ${PYTHON_LIBRARIES})
+ target_link_libraries(graph ${catkin_LIBRARIES} ${PYTHON_LIBRARIES} rrt)
  target_link_libraries(ph_cam ${catkin_LIBRARIES} /usr/local/openGJK/libopenGJKlib.a)
- target_link_libraries(scan_plan ${catkin_LIBRARIES} ph_cam rrt ${OCTOMAP_LIBRARIES} ${DYNAMICEDT3D_LIBRARIES})
+ target_link_libraries(scan_plan ${catkin_LIBRARIES} ph_cam rrt graph ${OCTOMAP_LIBRARIES} ${DYNAMICEDT3D_LIBRARIES})
  target_link_libraries(scan_plan_node ${catkin_LIBRARIES} scan_plan)
 
 #############

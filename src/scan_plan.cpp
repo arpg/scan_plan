@@ -3,6 +3,8 @@
 // ***************************************************************************
 scan_plan::scan_plan(ros::NodeHandle* nh)
 {
+  test_script();
+
   isInitialized_ = 0x00;
   nh_ = nh;
  
@@ -306,7 +308,7 @@ void scan_plan::init_dist_map()
   //octTree_->getMetricMax(x,y,z);
   //octomap::point3d max(x, y, z);
 
-  bool unknownAsOccupied = false;
+  bool unknownAsOccupied = true;
 
   float maxDist = 5.0;
 
@@ -320,6 +322,10 @@ void scan_plan::init_dist_map()
 // ***************************************************************************
 void scan_plan::test_script()
 {
+  graph gph(Eigen::Vector3d(0.6,0.5,12), 0.5);
+
+  return;
+
 // 1. Grow tree, check the nodes, paths, distance of each node from the map
   rrtTree_->update_oct_dist(octDist_);
   rrtTree_->build(Eigen::Vector3d(0.1,0,1.1));

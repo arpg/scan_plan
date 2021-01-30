@@ -4,6 +4,7 @@
 #include "ros/ros.h"
 #include "ph_cam.h"
 #include "rrt.h"
+#include "graph.h"
 #include "nav_msgs/Path.h"
 #include "octomap_msgs/Octomap.h"
 #include "octomap_msgs/conversions.h"
