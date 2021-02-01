@@ -13,10 +13,13 @@
 #include "dynamicEDT3D/dynamicEDTOctomap.h"
 #include "matplotlib-cpp/matplotlibcpp.h"
 
+#include "visualization_msgs/MarkerArray.h"
+#include "ros/ros.h"
+
 // ***************************************************************************
 struct gvert
 {
-  enum Terrain { FLAT, CLIFF, STEPS };
+  enum Terrain { FLAT, CLIFF, STEPS, UNKNOWN };
 
   Eigen::Vector3d pos; // position
   int commSig; // communication strength (0-100)
@@ -60,7 +63,8 @@ public:
   graph(Eigen::Vector3d, double);
   
   bool add_vertex(const gvert);
-  bool u_coll(const gvert, const gvert);
+  bool u_coll(const gvert, const gvert);  
+  void publish_viz(ros::Publisher&, std::string);
 };
 
 #endif

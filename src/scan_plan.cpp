@@ -15,6 +15,11 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   while( !tfBuffer_.canTransform(worldFrameId_, baseFrameId_, ros::Time(0)) );
     baseToWorld_ = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
 
+  Eigen::Vector3d currPos(baseToWorld_.transform.translation.x, 
+                          baseToWorld_.transform.translation.y, 
+                          baseToWorld_.transform.translation.z);
+  graph_ = new graph(homePos_+=currPos, 10.0*rrtDelDist_); // assuming graph near radius is 10 times rrt delta distance
+
   for(int i=0; i<nCams_; i++)
   {
     phCamsOpt_.push_back( ph_cam(camInfoK_.row(i).data(), camRes_.row(i).data(), discInt_.row(i).data()) );
@@ -28,6 +33,7 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   pathPub_ = nh->advertise<nav_msgs::Path>("path_out", 10);
   lookaheadPub_ = nh->advertise<geometry_msgs::PointStamped>("lookahead_out", 10);
   compTimePub_ = nh->advertise<std_msgs::Float64>("compute_time_out", 10);
+  vizPub_ = nh->advertise<visualization_msgs::MarkerArray>("viz_out", 10);
 
   rrtTree_ = new rrt(rrtNNodes_, scanBnds_[0], scanBnds_[1], rrtRadNear_, rrtDelDist_, radRob_, rrtFailItr_, octDist_);
 
@@ -98,6 +104,10 @@ void scan_plan::wait_for_params(ros::NodeHandle* nh)
 
   while(!nh->getParam("lookahead_path_len", lookaheadDist_));
   while(!nh->getParam("n_hist_poses_exploration_dir", nHistPoses_));
+
+  std::vector<double> homePosOffset;
+  while(!nh->getParam("home_position_offset", homePosOffset));
+  homePos_ = Eigen::Vector3d(homePosOffset[0],homePosOffset[1],homePosOffset[2]);
 
   ROS_INFO("%s: Parameters retrieved from parameter server", nh->getNamespace().c_str());
 
@@ -189,6 +199,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   disp(currExpHeight, "EXPLORATION HEIGHT");
   std::cout << std::endl;
 
+  int idPathLeaf = -1;
+
   double minCst = 10000;
   for(int i=0; i<idLeaves.size(); i++)
   {
@@ -202,17 +214,23 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
                    + cGain_[2] * height_diff(currExpHeight, path)
                    + cGain_[3] * heading_diff(currRobYaw, pathPoses);
 
-    if( minCst > pathCst && path_length(path) > (radRob_+0.1) )
+    if( minCst > pathCst && min_path_len(path) ) // minimum path length condition
     {
       minCst = pathCst;
       pathPoses_ = pathPoses;
       path_ = path;
+      idPathLeaf = i;
     }
   }
+
+  // assuming if a path is found that can be followed i.e, lowest cost and having atleast minimum path length
+  if( idPathLeaf > -1 ) 
+    add_paths_to_graph(rrtTree_, idLeaves, idPathLeaf, graph_);
    
   ros::Duration timeE = ros::Time::now() - timeS;
 
   publish_path();
+  graph_->publish_viz(vizPub_, worldFrameId_);
 
   std_msgs::Float64 computeTimeMsg;
   computeTimeMsg.data = timeE.toSec();
@@ -220,6 +238,64 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 
   
   std::cout << "Replan Compute Time = " << computeTimeMsg.data << " sec" << std::endl;
+}
+
+// ***************************************************************************
+bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int idLookaheadLeaf, graph* gph) 
+{
+  const int nGraphPaths = 10; // assuming 10 paths in total are to be added to the graph
+  bool success = false;
+
+  Eigen::MatrixXd path;
+
+  // all other paths
+  for(int i=0; i<idLeaves.size(); i++)
+  {
+    if(i == idLookaheadLeaf)
+      continue;
+
+    if(i > (nGraphPaths-1))
+      break;
+
+    path = tree->get_path(idLeaves[i]);
+    if( !min_path_len(path) )
+      continue;
+
+    if( add_path_to_graph(path, gph, true) )
+      success = true;
+  }
+
+  // lookahead path
+  // assuming already checked for minimum path length
+  path = tree->get_path(idLookaheadLeaf);
+  if( add_path_to_graph(path, gph, false) )
+    success = true;
+
+  return success;
+}
+
+// ***************************************************************************
+bool scan_plan::add_path_to_graph(Eigen::MatrixXd& path, graph*, bool containFrontier)
+{
+  bool success= false;
+
+  gvert vert;
+  for(int i=0; i<path.rows(); i++)
+  {
+    vert.pos = path.row(i);
+    vert.commSig = 0;
+    
+    if( containFrontier && i==(path.rows()-1) )
+      vert.isFrontier = true;
+    else
+      vert.isFrontier = false;
+
+    vert.terrain = gvert::UNKNOWN;
+
+    success = graph_->add_vertex(vert);
+  }
+
+  return success;
 }
 
 // ***************************************************************************
@@ -618,6 +694,13 @@ double scan_plan::path_length(Eigen::MatrixXd& path)
     return 0;
 
   return double(path.rows()-1)*rrtDelDist_;
+}
+
+// ***************************************************************************
+bool scan_plan::min_path_len(Eigen::MatrixXd& path)
+{
+  double pathLength = path_length(path);
+  return pathLength > (radRob_+0.1) && pathLength > (rrtDelDist_+0.1);
 }
 
 // ***************************************************************************

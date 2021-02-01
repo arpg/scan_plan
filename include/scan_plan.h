@@ -34,6 +34,7 @@ private:
   ros::Publisher pathPub_;
   ros::Publisher lookaheadPub_;
   ros::Publisher compTimePub_;
+  ros::Publisher vizPub_;
 
   tf2_ros::Buffer tfBuffer_;
   tf2_ros::TransformListener* tfListenerPtr_;
@@ -74,6 +75,9 @@ private:
 
   int nHistPoses_;
 
+  graph* graph_;
+  Eigen::Vector3d homePos_;
+
 public:
   scan_plan(ros::NodeHandle*);
   ~scan_plan();
@@ -108,6 +112,10 @@ public:
   double exploration_direction(double&);
   double path_length(Eigen::MatrixXd& path);
   double height_diff(double currHeight, Eigen::MatrixXd& path);
+
+  bool min_path_len(Eigen::MatrixXd& path);
+  bool add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int idLookaheadLeaf, graph* gph);
+  bool add_path_to_graph(Eigen::MatrixXd& path, graph*, bool containFrontier);
 };
 
 #endif
