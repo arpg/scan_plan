@@ -13,6 +13,9 @@
 #include "dynamicEDT3D/dynamicEDTOctomap.h"
 #include "matplotlib-cpp/matplotlibcpp.h"
 
+#include "ros/ros.h"
+#include "visualization_msgs/MarkerArray.h"
+
 // ***************************************************************************
 struct near_node
 {
@@ -76,6 +79,7 @@ public:
   void plot_tree();
   void plot_path(Eigen::MatrixXd);
   void set_bounds(double[3], double[3]);
+  void publish_viz(ros::Publisher&, std::string, std::vector<int>&);
 };
 
 #endif

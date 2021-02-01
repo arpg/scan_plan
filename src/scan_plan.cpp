@@ -231,6 +231,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 
   publish_path();
   graph_->publish_viz(vizPub_, worldFrameId_);
+  rrtTree_->publish_viz(vizPub_,worldFrameId_,idLeaves);
 
   std_msgs::Float64 computeTimeMsg;
   computeTimeMsg.data = timeE.toSec();

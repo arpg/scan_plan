@@ -92,6 +92,12 @@ void graph::publish_viz(ros::Publisher& vizPub, std::string frameId)
   vertices.id = 0;
   vertices.type = visualization_msgs::Marker::SPHERE_LIST;
   vertices.action = visualization_msgs::Marker::ADD;
+  vertices.pose.orientation.w = 1;
+  geometry_msgs::Vector3 scale;
+	scale.x = 0.05;
+	scale.y = 0.05;
+	scale.z = 0.05;
+	vertices.scale = scale;
   
   geometry_msgs::Point vertex;
   std_msgs::ColorRGBA color;
@@ -116,6 +122,8 @@ void graph::publish_viz(ros::Publisher& vizPub, std::string frameId)
   edges.id = 0;
   edges.type = visualization_msgs::Marker::LINE_LIST;
   edges.action = visualization_msgs::Marker::ADD;
+  edges.pose.orientation.w = 1; 
+	edges.scale = scale;
   
   geometry_msgs::Point vertex1;
   geometry_msgs::Point vertex2;

@@ -426,6 +426,50 @@ void rrt::plot_path(Eigen::MatrixXd path)
   matplotlibcpp::show(false);
 }
 // ***************************************************************************
+void rrt::publish_viz(ros::Publisher& vizPub, std::string frameId, std::vector<int>& idLeaves)
+{
+  visualization_msgs::Marker tree;
+  tree.header.frame_id = frameId;
+  tree.header.stamp = ros::Time::now();
+  tree.ns = "tree";
+  tree.id = 0;
+  tree.type = visualization_msgs::Marker::LINE_LIST;
+  tree.action = visualization_msgs::Marker::ADD;
+  tree.pose.orientation.w = 1;
+  geometry_msgs::Vector3 scale;
+	scale.x = 0.05;
+	scale.y = 0.05;
+	scale.z = 0.05;
+	tree.scale = scale;
+
+  std_msgs::ColorRGBA color;
+
+  for(int i=0; i<idLeaves.size(); i++)
+  {
+    Eigen::MatrixXd path = get_path(idLeaves[i]);
+    for(int j=0; j<(path.rows()-1); j++)
+    {
+      geometry_msgs::Point vertex;
+      vertex.x = path(j,0);
+      vertex.y = path(j,1);
+      vertex.z = path(j,2);
+      tree.points.push_back(vertex);
+      vertex.x = path(j+1,0);
+      vertex.y = path(j+1,1);
+      vertex.z = path(j+1,2);
+      tree.points.push_back(vertex);
+
+      color.r = 0; color.g = 0; color.b = 1; color.a = 1;
+      tree.colors.push_back(color);
+    }
+  }
+
+  visualization_msgs::MarkerArray vizMsg;
+  vizMsg.markers.push_back(tree);
+  
+  vizPub.publish(vizMsg);
+}
+
 
 // ***************************************************************************
 
