@@ -34,6 +34,7 @@ private:
   ros::Publisher pathPub_;
   ros::Publisher lookaheadPub_;
   ros::Publisher compTimePub_;
+  ros::Publisher frontiersPub_;
   ros::Publisher vizPub_;
 
   tf2_ros::Buffer tfBuffer_;

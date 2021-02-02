@@ -453,6 +453,10 @@ void rrt::publish_viz(ros::Publisher& vizPub, std::string frameId, std::vector<i
       vertex.x = path(j,0);
       vertex.y = path(j,1);
       vertex.z = path(j,2);
+
+      color.r = 0; color.g = 0; color.b = 1; color.a = 1;
+      tree.colors.push_back(color);
+
       tree.points.push_back(vertex);
       vertex.x = path(j+1,0);
       vertex.y = path(j+1,1);

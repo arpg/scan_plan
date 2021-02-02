@@ -1,7 +1,7 @@
 n_rrt_nodes: 600
 
-min_bounds: [-10, -10, -2.0]
-max_bounds: [10, 10, 2.0]
+min_bounds: [-10, -10, -3.0]
+max_bounds: [10, 10, 3.0]
 
 near_radius_rrt: 2.0
 
@@ -33,5 +33,7 @@ lookahead_path_len: 2.0
 
 # number of history poses for exploration direction (must be greater than 2)
 n_hist_poses_exploration_dir: 8
+
+home_position_offset: [0, 0, 1.5]
 
 verbose: true

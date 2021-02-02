@@ -18,7 +18,13 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   Eigen::Vector3d currPos(baseToWorld_.transform.translation.x, 
                           baseToWorld_.transform.translation.y, 
                           baseToWorld_.transform.translation.z);
-  graph_ = new graph(homePos_+=currPos, 10.0*rrtDelDist_); // assuming graph near radius is 10 times rrt delta distance
+  //graph_ = new graph(homePos_+=currPos, 10.0*rrtDelDist_, radRob_); // assuming graph near radius is 10 times rrt delta distance
+  double sensRange = 10;
+  double minVolGain = 0;
+  graph_ = new graph(Eigen::Vector3d(2.0,-1,1.5), 10.0*rrtDelDist_, radRob_, sensRange, minVolGain, worldFrameId_); // assuming graph near radius is 10 times rrt delta distance
+
+  //TODO: graph u_coll lambda is too large since the nearRad is 10.0*rrtDelDist_
+  //TODO: sensRange -> parameter
 
   for(int i=0; i<nCams_; i++)
   {
@@ -34,6 +40,7 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   lookaheadPub_ = nh->advertise<geometry_msgs::PointStamped>("lookahead_out", 10);
   compTimePub_ = nh->advertise<std_msgs::Float64>("compute_time_out", 10);
   vizPub_ = nh->advertise<visualization_msgs::MarkerArray>("viz_out", 10);
+  frontiersPub_ = nh->advertise<geometry_msgs::PoseArray>("frontiers_out", 10);
 
   rrtTree_ = new rrt(rrtNNodes_, scanBnds_[0], scanBnds_[1], rrtRadNear_, rrtDelDist_, radRob_, rrtFailItr_, octDist_);
 
@@ -183,6 +190,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   get_rrt_bounds(rrtBnds);
   rrtTree_->set_bounds(rrtBnds[0], rrtBnds[1]);
   rrtTree_->update_oct_dist(octDist_);
+  graph_->update_octomap(octDist_,octTree_);
 
   rrtTree_->build(Eigen::Vector3d(baseToWorld_.transform.translation.x, baseToWorld_.transform.translation.y, baseToWorld_.transform.translation.z));
 
@@ -219,24 +227,39 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
       minCst = pathCst;
       pathPoses_ = pathPoses;
       path_ = path;
-      idPathLeaf = i;
+      idPathLeaf = idLeaves[i];
     }
   }
 
+  std::cout << "Adding paths to the graph" << std::endl;
   // assuming if a path is found that can be followed i.e, lowest cost and having atleast minimum path length
   if( idPathLeaf > -1 ) 
-    add_paths_to_graph(rrtTree_, idLeaves, idPathLeaf, graph_);
+  {
+    bool success = add_paths_to_graph(rrtTree_, idLeaves, idPathLeaf, graph_);
+    if(!success)
+      ROS_WARN("%s: Graph connection unsuccessful", nh_->getNamespace().c_str());
+  }
+  //TODO: Generate graph diconnect warning if no path is successfully added to the graph
+  // Only add node to the graph if there is no existing node closer than radRob in graph lib, return success in that case since the graph is likely to be connected fine
+  // update older node if within robot radius with updated terrain and collision information, the latter may mean taking nodes out of the graph
+
+  //TODO: Consider including a check, update path if end-of-path is reached, and increase the replan time
    
   ros::Duration timeE = ros::Time::now() - timeS;
 
+  std::cout << "Publishing lookahead path" << std::endl;
   publish_path();
-  graph_->publish_viz(vizPub_, worldFrameId_);
-  rrtTree_->publish_viz(vizPub_,worldFrameId_,idLeaves);
+
+  std::cout << "Publishing frontiers" << std::endl; 
+  graph_->publish_frontiers(frontiersPub_); 
+
+  std::cout << "Publishing visualizations" << std::endl;
+  graph_->publish_viz(vizPub_);
+  //rrtTree_->publish_viz(vizPub_,worldFrameId_,idLeaves);
 
   std_msgs::Float64 computeTimeMsg;
   computeTimeMsg.data = timeE.toSec();
   compTimePub_.publish(computeTimeMsg);
-
   
   std::cout << "Replan Compute Time = " << computeTimeMsg.data << " sec" << std::endl;
 }
@@ -244,28 +267,40 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 // ***************************************************************************
 bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int idLookaheadLeaf, graph* gph) 
 {
-  const int nGraphPaths = 10; // assuming 10 paths in total are to be added to the graph
+  //TODO: Add paths with best pose history distances instead of randomly choosing
+
+  const int nGraphPaths = 5; // assuming 10 paths in total are to be added to the graph
   bool success = false;
 
   Eigen::MatrixXd path;
 
+  std::cout << "Adding non-lookahead paths" << std::endl;
   // all other paths
-  for(int i=0; i<idLeaves.size(); i++)
+
+  int nCurrGraphPaths = 0;
+  while((nCurrGraphPaths < (nGraphPaths-1)) && (nCurrGraphPaths < idLeaves.size()))
   {
-    if(i == idLookaheadLeaf)
+    if(idLeaves[nCurrGraphPaths] == idLookaheadLeaf)
+    {
+      nCurrGraphPaths++;
       continue;
+    }
 
-    if(i > (nGraphPaths-1))
-      break;
-
-    path = tree->get_path(idLeaves[i]);
+    path = tree->get_path(idLeaves[nCurrGraphPaths]);
     if( !min_path_len(path) )
+    {
+      nCurrGraphPaths++;
       continue;
+    }
 
+    std::cout << "HERE" << std::endl;
     if( add_path_to_graph(path, gph, true) )
       success = true;
+    std::cout << "HERE2" << std::endl;
+    nCurrGraphPaths++;
   }
 
+  std::cout << "Adding lookahead path" << std::endl;
   // lookahead path
   // assuming already checked for minimum path length
   path = tree->get_path(idLookaheadLeaf);
@@ -293,6 +328,7 @@ bool scan_plan::add_path_to_graph(Eigen::MatrixXd& path, graph*, bool containFro
 
     vert.terrain = gvert::UNKNOWN;
 
+    std::cout << "Adding vertex" << std::endl;
     success = graph_->add_vertex(vert);
   }
 
@@ -399,7 +435,7 @@ void scan_plan::init_dist_map()
 // ***************************************************************************
 void scan_plan::test_script()
 {
-  graph gph(Eigen::Vector3d(0.6,0.5,12), 0.5);
+ // graph gph(Eigen::Vector3d(0.6,0.5,12), 0.5);
 
   return;
 
@@ -701,7 +737,7 @@ double scan_plan::path_length(Eigen::MatrixXd& path)
 bool scan_plan::min_path_len(Eigen::MatrixXd& path)
 {
   double pathLength = path_length(path);
-  return pathLength > (radRob_+0.1) && pathLength > (rrtDelDist_+0.1);
+  return (pathLength > (radRob_+0.1)) && (pathLength > (rrtDelDist_+0.1));
 }
 
 // ***************************************************************************
@@ -710,4 +746,5 @@ scan_plan::~scan_plan()
   delete octTree_;
   delete octDist_;
   delete rrtTree_;
+  delete graph_;
 }

@@ -14,6 +14,7 @@
 #include "matplotlib-cpp/matplotlibcpp.h"
 
 #include "visualization_msgs/MarkerArray.h"
+#include "geometry_msgs/PoseArray.h"
 #include "ros/ros.h"
 
 // ***************************************************************************
@@ -36,7 +37,13 @@ typedef boost::graph_traits<BiDirectionalGraph>::vertex_iterator VertexIterator;
 typedef boost::graph_traits<BiDirectionalGraph>::vertex_descriptor VertexDescriptor;
 
 // ***************************************************************************
+struct frontier
+{
+  VertexDescriptor vertDesc;
+  double volGain;
+};
 
+// ***************************************************************************
 class graph
 {
 
@@ -48,10 +55,15 @@ private:
 
   double radNear_;
   double radRob_; // robot radius
+  double sensRange_;
+  double minVolGain_;
   
   DynamicEDTOctomap* octDist_;
+  octomap::OcTree* octTree_;
 
-  std::forward_list<VertexDescriptor> frontierVerts_;
+  std::forward_list<frontier> frontiers_;
+
+  std::string frameId_;
  
   // if a node in the graph is removed, the iterators may change, frontier nodes cannot be tracked using VertexIterator in that case
   // Preference 1. Don't remove anything from the graph
@@ -60,11 +72,17 @@ private:
  
 public:
   ~graph();
-  graph(Eigen::Vector3d, double);
+  graph(Eigen::Vector3d, double, double, double, double, std::string);
   
   bool add_vertex(const gvert);
   bool u_coll(const gvert, const gvert);  
-  void publish_viz(ros::Publisher&, std::string);
+  void publish_viz(ros::Publisher&);
+  void publish_frontiers(ros::Publisher&);
+  void update_octomap(DynamicEDTOctomap*, octomap::OcTree*);
+
+  double volumetric_gain(Eigen::Vector3d, octomap::OcTree*, double);
+  int n_unseen_neighbors(octomap::OcTree*, octomap::OcTreeKey*);
+  void update_frontiers_vol_gain();
 };
 
 #endif
