@@ -1,7 +1,7 @@
 #include "octomap_man.h"
 
 // ***************************************************************************
-octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, octomap::OcTree* octTree, std::string vehicleType, double radRob, double maxGroundRoughness, const std::vector<mapping_sensor>& mapSensors)
+octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, const std::vector<mapping_sensor>& mapSensors)
 {
   octTree_ = octTree;
 
@@ -10,19 +10,11 @@ octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, octomap
   vehicleType_ = vehicleType;
   radRob_ = radRob;
   maxGroundRoughness_ = maxGroundRoughness;
-
-  int robLenVoxs = ceil(2*radRob / octTree_->getResolution());
-
-  surfCoordsBase_.resize( pow(robLenVoxs,2), 2 ); // assuming square ground projection of the robot
-
-  for(int i=0; i<robLenVoxs; i++) // rows
-    for(int j=0; j<robLenVox; j++) // columns
-    {
-      surfCoordsBase_(i*robLenVoxs+j,0) = -radRob + double(j)*octTree_->getResolution();
-      surfCoordsBase_(i*robLenVoxs+j,1) = -radRob + double(i)*octTree_->getResolution();
-    }
+  maxGroundStep_ = maxGroundStep;
 
   mapSensors_ = mapSensors;
+
+  isInitialized = false; // wait for the first octree to set this to true
 }
 // ***************************************************************************
 double octomap_man::volumetric_gain(const Eigen::Vector3d& basePos)
@@ -35,6 +27,43 @@ double octomap_man::volumetric_gain(const Eigen::Vector3d& basePos)
 
 // ***************************************************************************
 bool octomap_man::u_coll(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
+{
+  if(vehicleType == "air")
+    return u_coll_air(pos1, pos2);
+  else
+    return u_coll_ground(pos1, pos2);
+}
+
+// ***************************************************************************
+bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
+{
+  const double delLambda = octTree->getResolution() / (pos2 - pos1).norm();
+
+  double lambda = 0;
+  Eigen::Vector3d pos;
+
+  double groundRoughness;
+  Eigen::Vector3d groundPt = pos1;
+  Eigen::Vector3d lastGroundPt = pos1;
+  while(lambda <= 1)
+  {
+    pos = (1-lambda)*pos1 + lambda*pos2; 
+
+    if ( u_coll(pos, groundRoughness, groundPt) )
+      return true;
+    if ( abs(groundPt(2) - lastGroundPt(2)) > maxGroundStep_ )
+      return true;
+
+    lastGroundPt = groundPt;
+
+    lambda += delLambda;
+  }
+
+  return false;
+}
+
+// ***************************************************************************
+bool octomap_man::u_coll_air(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
 {
   const double delLambda = octTree->getResolution() / (pos2 - pos1).norm();
 
@@ -105,13 +134,17 @@ bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos, double& roughness, E
 
   double currRoughness = 0;
   Eigen::Vector3d currGroundPt(0,0,0);
+
+  const int groundPtIndx = ceil(double(surfCoordsBase_.rows())/2) - 1; // select the mid point of the shadow projection as the groundPoint
   for(int i=0; i<surfCoordsBase_.rows(); i++)
   {
     if( !project_point_to_ground( surfCoordsBase_.row(i).transpose() + pos, currRoughness, currGroundPt ) ) // translate robot shadow point to pos and project
       continue;
     roughness += currRoughness;
-    groundPt += currGroundPt;
     successfulProjections++;
+
+    if(i==groundPtIndx)
+      groundPt = currGroundPt;
   }
 
   if( double(successfulProjections) / double(surfCoordsBase_.rows()) < successfulProjectionsPercent )
@@ -199,4 +232,28 @@ void octomap_man::update_octree(octomap::OcTree* octTree)
 {
   delete octTree_;
   octTree_ = octTree;
+
+  if(isInitialized)
+    return;
+
+  // creating robot shadow in base frame to be projected to the ground
+  int robLenVoxs = ceil(2*radRob_ / octTree_->getResolution());
+
+  surfCoordsBase_.resize( pow(robLenVoxs,2), 2 ); // assuming square ground projection of the robot
+
+  for(int i=0; i<robLenVoxs; i++) // rows
+    for(int j=0; j<robLenVox; j++) // columns
+    {
+      surfCoordsBase_(i*robLenVoxs+j,0) = -radRob_ + double(j)*octTree_->getResolution();
+      surfCoordsBase_(i*robLenVoxs+j,1) = -radRob_ + double(i)*octTree_->getResolution();
+    }
+
+  isInitialized_ = true;
+}
+
+// ***************************************************************************
+octomap_man::~octomap_man()
+{
+  delete octTree_;
+  delete octDist_;
 }

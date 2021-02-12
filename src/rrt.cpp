@@ -1,13 +1,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-rrt::rrt(int nNodes, std::vector<double> minBnds, std::vector<double> maxBnds, double radNear, double delDist, double radRob, int failItr)
-{
-  init(nNodes, minBnds, maxBnds, radNear, delDist, radRob, failItr);
-}
-
-// ***************************************************************************
-void rrt::init(int nNodes, std::vector<double> minBnds, std::vector<double> maxBnds, double radNear, double delDist, double radRob, int failItr)
+rrt::rrt(int nNodes, const std::vector<double>& minBnds, const std::vector<double>& maxBnds, double radNear, double delDist, double radRob, int failItr, octomap_man* octMan)
 {
   posNds_.resize(nNodes,3);
   cstNds_.resize(nNodes);
@@ -30,7 +24,10 @@ void rrt::init(int nNodes, std::vector<double> minBnds, std::vector<double> maxB
   radRob_ = radRob;
 
   failItr_ = failItr;
+
+  octMan_ = octMan;
 }
+
 // ***************************************************************************
 void rrt::set_bounds(double minBnds[3], double maxBnds[3])
 {
@@ -160,7 +157,7 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
       std::cout << "No solution found in max iterations!" << std::endl;
       break;
     }
-    if ( u_coll(posNearest, posNew) )
+    if ( octMan_->u_coll(posNearest, posNew) )
       continue;
     itr = 0;
 
@@ -295,7 +292,7 @@ void rrt::find_near(Eigen::Vector3d posNew, double rad)
 
     if ( nearNd.cstLnk > rad )
       continue;
-    if ( u_coll( posNds_.row(i), posNew ) )
+    if ( octMan_->u_coll( posNds_.row(i), posNew ) )
       continue;
 
     nearNd.cstNd = cstNds_(i);
@@ -323,50 +320,8 @@ Eigen::Vector3d rrt::steer(Eigen::Vector3d posFrom, Eigen::Vector3d posTowards, 
 }
 
 // ***************************************************************************
-bool rrt::u_coll(Eigen::Vector3d pos1, Eigen::Vector3d pos2)
-{
-  double delLambda = 0.2;
-
-  double lambda = 0;
-  Eigen::Vector3d pos;
-  while(lambda <= 1)
-  {
-    pos = (1-lambda)*pos1 + lambda*pos2; 
-
-    if ( u_coll_octomap(pos, radRob_, octDist_) && (pos - posRoot_).norm() > radRob_ )
-      return true;
-
-    lambda += delLambda;
-  }
-
-  return false;
-}
-
-// ***************************************************************************
-bool rrt::u_coll_octomap(Eigen::Vector3d pos, double radRob, DynamicEDTOctomap* octDist)
-{
-  //std::cout << "Coll check for position" << pos << std::endl;
-  double distObs = octDist->getDistance ( octomap::point3d( pos(0), pos(1), pos(2) ) );
-  //std::cout << "Distance from the map" << distObs << std::endl;
-
-  if ( distObs == DynamicEDTOctomap::distanceValue_Error )
-    return true;
-
-  if ( distObs <= radRob )
-    return true;
-
-  return false;
-}
-
-// ***************************************************************************
 rrt::~rrt()
 {
-}
-
-// ***************************************************************************
-void rrt::update_oct_dist(DynamicEDTOctomap* octDist)
-{
-  octDist_ = octDist;
 }
 
 // ***************************************************************************

@@ -10,9 +10,6 @@
 #include <forward_list>
 #include "disp.h"
 
-#include "dynamicEDT3D/dynamicEDTOctomap.h"
-#include "matplotlib-cpp/matplotlibcpp.h"
-
 #include "visualization_msgs/MarkerArray.h"
 #include "geometry_msgs/PoseArray.h"
 #include "ros/ros.h"
@@ -58,8 +55,7 @@ private:
   double sensRange_;
   double minVolGain_;
   
-  DynamicEDTOctomap* octDist_;
-  octomap::OcTree* octTree_;
+  octomap_man* octMan_;
 
   std::forward_list<frontier> frontiers_;
 
@@ -72,7 +68,7 @@ private:
  
 public:
   ~graph();
-  graph(Eigen::Vector3d, double, double, double, double, std::string);
+  graph(Eigen::Vector3d, double, double, double, double, std::string, octomap_man*);
   
   bool add_vertex(const gvert);
   bool u_coll(const gvert, const gvert);  

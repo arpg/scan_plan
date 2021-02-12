@@ -1,7 +1,7 @@
 #include "path_man.h"
 
 // ***************************************************************************
-double path_man::path_len(const Eigen::MatrixXd& path)
+double path_man::path_len(const Eigen::MatrixXd& path) // TODO: use eigen functions instead of for loop
 {
   if(path.rows() < 2)
     return 0;
@@ -13,10 +13,12 @@ double path_man::path_len(const Eigen::MatrixXd& path)
   return pathLen;
 }
 // ***************************************************************************
-std::pair<double, double> path_man::mean_heading_height(const Eigen::MatrixXd& path, const int& nLastPts)
+std::pair<double, double> path_man::mean_heading_height(const Eigen::MatrixXd& path, const int& nLastPts) // TODO: use eigen functions instead of for loop
 {
-  if(path.rows() < 2 || nLastPts < 2)
+  if(path.rows() < 1 || nLastPts < 1)
     return std::pair<double, double>(0.0, 0.0);
+  if(path.rows() < 2 || nLastPts < 2)
+    return std::pair<double, double>(0.0, path(0,2));
 
   Eigen::Vector3d estDirVec(0.0, 0.0, 0.0);
   double avgHeight = 0.0;
@@ -63,7 +65,7 @@ void path_man::publish_path(const Eigen::MatrixXd& eigPath, std::string frameId,
   pathPub.publish(path);
 }
 // ***************************************************************************
-std::pair<double, double> scan_plan::mean_heading_height_err(double yawIn, double heightIn, const Eigen::MatrixXd& pathIn)
+std::pair<double, double> path_man::mean_heading_height_err(double yawIn, double heightIn, const Eigen::MatrixXd& pathIn)
 {
   std::pair<double, double> meanHeadingHeightPath = mean_heading_height(pathIn, pathIn.rows());
 

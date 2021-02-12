@@ -2,7 +2,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-graph::graph(Eigen::Vector3d posRoot, double radNear, double radRob, double sensRange, double minVolGain, std::string frameId)
+graph::graph(Eigen::Vector3d posRoot, double radNear, double radRob, double sensRange, double minVolGain, std::string frameId, octomap_man* octMan)
 {
   adjList_ = new BiDirectionalGraph;
 
@@ -29,6 +29,8 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radRob, double sens
     VertexDescriptor vertDesc = *it;
     std::cout << (*adjList_)[vertDesc].pos << std::endl;
   }
+
+  octMan_ = octMan;
 
   //TODO: radRob_ and radNear_ assignments 
 }
@@ -79,28 +81,7 @@ bool graph::add_vertex(const gvert vertIn)
 // ***************************************************************************
 bool graph::u_coll(const gvert vert1, const gvert vert2)
 {
-  double delLambda = 0.2;
-
-  double lambda = 0;
-  Eigen::Vector3d pos;
-  while(lambda <= 1)
-  {
-    pos = (1-lambda)*vert1.pos + lambda*vert2.pos; 
-
-    if ( rrt::u_coll_octomap(pos, radRob_, octDist_) )
-      return true;
-
-    lambda += delLambda;
-  }
-
-  return false;
-}
-
-// ***************************************************************************
-void graph::update_octomap(DynamicEDTOctomap* octDist, octomap::OcTree* octTree)
-{
-  octDist_ = octDist;
-  octTree_ = octTree;
+  return octMan_->u_coll(vert1.pos, vert2.pos)
 }
 
 // ***************************************************************************

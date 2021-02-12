@@ -33,7 +33,8 @@ public:
   mapping_sensor(double fovH, double fovV, double resH, double resV, double range, geometry_msgs::TransformStamped sensorToBody);
   
   int n_ray_unseen_voxels(const Eigen::Vector3d& startPt, const Eigen::Vector3d& endPt, octomap::OcTree* octTree);
-  double volumetric_gain(octomap::OcTree* octTree, const geometry_msgs::TransformStamped& baseToWorld);
+  double volumetric_gain(octomap::OcTree* octTree, const geometry_msgs::TransformStamped& baseToWorld);c
+  double volumetric_gain(octomap::OcTree* octTree, const Eigen::Vector3d& basePos);
   Eigen::Vector3d transform_point(const Eigen::Vector3d& eigPt, const geometry_msgs::TransformStamped& transform);
   void populate_multiray_endpts();
 };

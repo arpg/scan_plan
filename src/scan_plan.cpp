@@ -19,15 +19,13 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   //TODO: graph u_coll lambda is too large since the nearRad is 10.0*rrtDelDist_
 
   octSub_ = nh->subscribe("octomap_in", 1, &scan_plan::octomap_cb, this);
+  poseHistSub_ = nh->subscribe("pose_hist_in", 1, &scan_plan::pose_hist_cb, this);
 
   pathPub_ = nh->advertise<nav_msgs::Path>("path_out", 10);
   lookaheadPub_ = nh->advertise<geometry_msgs::PointStamped>("lookahead_out", 10);
   compTimePub_ = nh->advertise<std_msgs::Float64>("compute_time_out", 10);
   vizPub_ = nh->advertise<visualization_msgs::MarkerArray>("viz_out", 10);
   frontiersPub_ = nh->advertise<geometry_msgs::PoseArray>("frontiers_out", 10);
-
-  pathPoses_.resize(0);
-  path_.resize(0,0);
 
   ROS_INFO("%s: Waiting for the input map ...", nh->getNamespace().c_str());
   while( (isInitialized_ & 0x01) != 0x01 )
@@ -71,12 +69,14 @@ void scan_plan::setup_sensors()
 
   ROS_INFO("%s: Setting up mapping sensors ...", nh_->getNamespace().c_str());
   for(int i=0; i<sensorFrameIds.size(); i++)
-    mSensors_.push_back( mapping_sensor(fovs[i*2], fovs[(i*2)+1], res[i*2], res[(i*2)+1], ranges[i], sensorsToBase[i]) );
+    mapSensors_.push_back( mapping_sensor(fovs[i*2], fovs[(i*2)+1], res[i*2], res[(i*2)+1], ranges[i], sensorsToBase[i]) );
   
 }
 // ***************************************************************************
 void scan_plan::setup_rrt()
 {
+  // prereqs setup_octomap
+
   ROS_INFO("%s: Waiting for tree params ...", nh_->getNamespace().c_str());
 
   std::vector<double> minBnds, maxBnds;
@@ -89,16 +89,15 @@ void scan_plan::setup_rrt()
   while(!nh->getParam("near_radius_rrt", rrtRadNear));
   while(!nh->getParam("delta_distance_rrt", rrtDelDst));
   while(!nh->getParam("n_fail_iterations_rrt", rrtFailItr));
-  while(!nh->getParam("robot_radius", radRob_));
 
   ROS_INFO("%s: Setting up local tree ...", nh_->getNamespace().c_str());
-  rrtTree_ = new rrt(rrtNNodes, minBnds, maxBnds, rrtRadNear, rrtDelDist, radRob_, rrtFailItr);  
+  rrtTree_ = new rrt(rrtNNodes, minBnds, maxBnds, rrtRadNear, rrtDelDist, radRob_, rrtFailItr, octMan_);  
 }
 
 // ***************************************************************************
 void scan_plan::setup_graph()
 {
-  // prereqs setup_pose, setup_sensors, setup_rrt
+  // prereqs setup_pose, setup_sensors, setup_rrt, setup_octomap
 
   ROS_INFO("%s: Waiting for graph params ...", nh_->getNamespace().c_str());
   double graphRadNear, minVolGain;
@@ -113,7 +112,7 @@ void scan_plan::setup_graph()
   //                        baseToWorld_.transform.translation.y, 
   //                        baseToWorld_.transform.translation.z);
 
-  graph_ = new graph(Eigen::Vector3d(homePos[0],homePos[1],homePos[2]), graphRadNear, radRob_, mSensors_, minVolGain, worldFrameId_);
+  graph_ = new graph(Eigen::Vector3d(homePos[0],homePos[1],homePos[2]), graphRadNear, radRob_, mapSensors_, minVolGain, worldFrameId_, octMan_);
 }
 
 // ***************************************************************************
@@ -132,12 +131,21 @@ void scan_plan::setup_timers()
 // ***************************************************************************
 void scan_plan::setup_octomap()
 {
+  // prereqs setup_sensors
   ROS_INFO("%s: Waiting for octomap params ...", nh_->getNamespace().c_str());
+
+  std::string vehicleType;
+  double maxGroundRoughness, maxGroundStep
+
   while(!nh->getParam("esdf_max_dist", maxDistEsdf_));
   while(!nh->getParam("esdf_unknown_as_occupied", esdfUnknownAsOccupied_));
+  while(!nh->getParam("vehicle_type", vehicleType)); // "air", "ground"
+  while(!nh->getParam("robot_radius", radRob_));
+  while(!nh->getParam("max_ground_roughness", maxGroundRoughness)); // [-pi,pi]
+  while(!nh->getParam("max_ground_step", maxGroundStep)); // [epsilon,inf]
 
   ROS_INFO("%s: Setting up octomap manager ...", nh_->getNamespace().c_str());
-  
+  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, vehicleType, radRob_, maxGroundRoughness, maxGroundStep, mapSensors_);
 }
 
 // ***************************************************************************
@@ -149,6 +157,10 @@ void scan_plan::setup_scan_plan()
   while(!nh->getParam("lookahead_path_len", lookaheadDist_));
   while(!nh->getParam("n_hist_poses_exploration_dir", nHistPoses_));
   while(!nh->getParam("path_res_for_lookahead_npts_per_seg", pathResLookaheadPt_));
+  while(!nh->getParam("min_bnds_geofence", geoFenceMin_));
+  while(!nh->getParam("max_bnds_geofence", geoFenceMax_)); // in world frame
+  while(!nh->getParam("n_hist_pts_for_exploration_dir", nHistPosesExpDir_));
+  while(!nh->getParam("home_position", homePos_)); // must be collision-free
 }
 
 // ***************************************************************************
@@ -185,12 +197,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
 
-  //double rrtBnds[2][3];
-  //get_rrt_bounds(rrtBnds);
   rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
-  rrtTree_->update_octomap_man(octomapMan_);
-  //rrtTree_->update_oct_dist(octDist_);
-  graph_->update_octomap_man(octomapMan_);
 
   rrtTree_->build(robPos);
 
@@ -199,13 +206,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 
   // get all paths ending at leaves and choose one with min cost
   double currRobYaw = quat_to_yaw(baseToWorld_.transform.rotation);
-  double currExpHeight;
-  double currExpYaw = exploration_direction(currExpHeight);
-   
-  std::cout << std::endl;
-  disp(currExpYaw*180/3.14159, "EXPLORATION HEADING");
-  disp(currExpHeight, "EXPLORATION HEIGHT");
-  std::cout << std::endl;
+  std::pair<double, double> currExpYawHeight = path_man::mean_heading_height(posHist_.topRows(posHistSize_), posHistSize_); ////////
+
 
   int idPathLeaf = -1;
 
@@ -214,19 +216,14 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   {
     Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
 
-    std::vector<geometry_msgs::TransformStamped> pathPoses;
-    std::vector<ph_cam> phCamsPath = path_ph_cams(path, pathPoses);
-
-    double pathCst = cGain_[0] * exp(-1*fov_dist(phCamsPath))
-                   + cGain_[1] * heading_diff(currExpYaw, pathPoses)
-                   + cGain_[2] * height_diff(currExpHeight, path)
-                   + cGain_[3] * heading_diff(currRobYaw, pathPoses);
+    std::pair<double, double> pathYawHeightErr = mean_heading_height_err(std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), path);
+    double pathCst = cGain_[0] * exp( -1 * path_man::path_to_path_dist(path,....) ) // distance between candidate path and pose history path
+                   + cGain_[1] * std::get<0>(pathYawHeightErr) // distance between the pose history and candidate path headings
+                   + cGain_[2] * std::get<1>(pathYawHeightErr); // distance between the pose history and candidate path heights
 
     if( minCst > pathCst && min_path_len(path) ) // minimum path length condition
     {
       minCst = pathCst;
-      pathPoses_ = pathPoses;
-      path_ = path;
       idPathLeaf = idLeaves[i];
     }
   }
@@ -344,8 +341,8 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   octomap::AbstractOcTree* tree = octomap_msgs::msgToMap(octmpMsg);
   octTree_ = dynamic_cast<octomap::OcTree*>(tree);
 
-  octomapMan_->update_octree(octTree_);
-  octomapMan_->update_esdf();
+  octMan_->update_octree(octTree_);
+  octMan_->update_esdf();
 
   init_dist_map();
 
@@ -358,20 +355,20 @@ Eigen::Vector3d scan_plan::geofence_saturation(const Eigen::Vector3d& posIn)
 {
   Eigen::Vector3d posOut = posIn;
 
-  if(posOut(0) < geoFenceMin(0))
-    pos(0) = geoFenceMin(0);
-  if(posOut(0) > geoFenceMax(0))
-    pos(0) = geoFenceMax(0);
+  if(posOut(0) < geoFenceMin_(0))
+    pos(0) = geoFenceMin_(0);
+  if(posOut(0) > geoFenceMax_(0))
+    pos(0) = geoFenceMax_(0);
 
-  if(posOut(1) < geoFenceMin(1))
-    pos(1) = geoFenceMin(1);
-  if(posOut(1) > geoFenceMax(1))
-    pos(1) = geoFenceMax(1);
+  if(posOut(1) < geoFenceMin_(1))
+    pos(1) = geoFenceMin_(1);
+  if(posOut(1) > geoFenceMax_(1))
+    pos(1) = geoFenceMax_(1);
 
-  if(posOut(2) < geoFenceMin(2))
-    pos(2) = geoFenceMin(2);
-  if(posOut(2) > geoFenceMax(2))
-    pos(2) = geoFenceMax(2);
+  if(posOut(2) < geoFenceMin_(2))
+    pos(2) = geoFenceMin_(2);
+  if(posOut(2) > geoFenceMax_(2))
+    pos(2) = geoFenceMax_(2);
 
   return posOut;
 }
@@ -470,11 +467,26 @@ bool scan_plan::min_path_len(Eigen::MatrixXd& path)
 }
 
 // ***************************************************************************
+void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
+{
+  if(poseHistMsg.poses.size() > posHist_.size())
+    posHist_.conservativeResize(posHist_.size()+100, NoChange_t);
+
+  for(int i=0; i<poseHistMsg.poses.size(); i++)
+  {
+    posHist_(i,0) = poseHistMsg.poses[i].pose.position.x;
+    posHist_(i,1) = poseHistMsg.poses[i].pose.position.y;
+    posHist_(i,2) = poseHistMsg.poses[i].pose.position.z;
+  }
+}
+
+// ***************************************************************************
 scan_plan::~scan_plan()
 {
   delete octTree_;
   delete octDist_;
   delete rrtTree_;
   delete graph_;
-  delete mSensors_;
+  delete mapSensors_;
+  delete octMan_;
 }

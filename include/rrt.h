@@ -47,7 +47,7 @@ private:
   // outputs of 'find_near' function, avoiding repeated allocation/deallocation
   std::vector<near_node> nearNds_;
   
-  DynamicEDTOctomap* octDist_;
+  octomap_man* octMan_;
 
   int failItr_;
 
@@ -55,7 +55,7 @@ private:
  
 public:
   ~rrt();
-  rrt(int, std::vector<double>, std::vector<double>, double, double, double, int);
+  rrt(int, std::vector<double>, std::vector<double>, double, double, double, int, octomap_man*);
   void init(int, std::vector<double>, std::vector<double>, double, double, double, int);
   
 
@@ -69,9 +69,6 @@ public:
   int find_nearest(Eigen::Vector3d);
   void find_near(Eigen::Vector3d, double);
   Eigen::Vector3d steer(Eigen::Vector3d, Eigen::Vector3d, double);
-  bool u_coll(Eigen::Vector3d, Eigen::Vector3d);
-  static bool u_coll_octomap(Eigen::Vector3d, double, DynamicEDTOctomap*);
-  void update_oct_dist(DynamicEDTOctomap*);
   std::vector<int> get_leaves();
   Eigen::MatrixXd get_path(int);
   void print_tree();

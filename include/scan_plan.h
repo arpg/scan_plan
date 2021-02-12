@@ -21,7 +21,7 @@ class scan_plan
 private:
 
   ros::NodeHandle* nh_;
-  Eigen::MatrixXf posHist_;
+  Eigen::MatrixXd posHist_(100,3); // initialize for 100 points. If the size increases, allocate memory for another 100 points and so on
   int posHistSize_;
 
   ros::Subscriber octSub_;
@@ -41,7 +41,10 @@ private:
   geometry_msgs::TransformStamped baseToWorld_;
 
   rrt* rrtTree_;
-  octomap_man* octomapMan_;
+  octomap_man* octMan_;
+  path_man* pathMan_;
+  graph* graph_;
+  std::vector<mapping_sensor> mapSensors_;
 
   uint8_t isInitialized_;
 
@@ -51,14 +54,9 @@ private:
 
   std::vector<double> cGain_;
 
-  //Eigen::MatrixXd path_;
-
   int nHistPosesExpDir_; // number of last poses to calculate exploration heading
-
-  graph* graph_;
+  
   Eigen::Vector3d homePos_;
-
-  std::vector<mapping_sensor> mSensors_;
 
   Eigen::Vector3d localBndsMin_;  
   Eigen::Vector3d localBndsMax_;
