@@ -26,10 +26,15 @@ private:
   DynamicEDTOctomap* octDist_ = NULL;
 
   double maxDistEsdf_;
-  bool esdfUnknownAsOccupied_;
+  bool esdfUnknownAsOccupied_; // only for "air" for now
   double radRob_; // radius if "air", half-width if "ground"
+  double maxGroundRoughness_; // only for "ground" for now 
 
   std::string vehicleType_; // "air", "ground"
+  Eigen::MatrixXd surfCoordsBase_; // list of coordinates spanning the vehicle's surface area looking from above in base frame (useful to project to ground for terrain) 
+  double groundPlaneSearchDist_;
+
+  std::vector<mapping_sensor> mapSensors_; // sensors that are building the map, useful to caluclate volumetric gain
  
 public:
   ~octomap_man();

@@ -1,16 +1,40 @@
 #include "octomap_man.h"
 
 // ***************************************************************************
-octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, octomap::OcTree*, std::string vehicleType, double radRob)
+octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, octomap::OcTree* octTree, std::string vehicleType, double radRob, double maxGroundRoughness, const std::vector<mapping_sensor>& mapSensors)
 {
+  octTree_ = octTree;
+
   maxDistEsdf_ = maxDistEsdf;
   esdfUnknownAsOccupied_ = esdfUnknownAsOccupied;
   vehicleType_ = vehicleType;
   radRob_ = radRob;
+  maxGroundRoughness_ = maxGroundRoughness;
+
+  int robLenVoxs = ceil(2*radRob / octTree_->getResolution());
+
+  surfCoordsBase_.resize( pow(robLenVoxs,2), 2 ); // assuming square ground projection of the robot
+
+  for(int i=0; i<robLenVoxs; i++) // rows
+    for(int j=0; j<robLenVox; j++) // columns
+    {
+      surfCoordsBase_(i*robLenVoxs+j,0) = -radRob + double(j)*octTree_->getResolution();
+      surfCoordsBase_(i*robLenVoxs+j,1) = -radRob + double(i)*octTree_->getResolution();
+    }
+
+  mapSensors_ = mapSensors;
+}
+// ***************************************************************************
+double octomap_man::volumetric_gain(const Eigen::Vector3d& basePos)
+{
+  double volGain = 0;
+  for(int i=0; i<mapSensors_.size(); i++)
+    volGain += mapSensors_[i].volumetric_gain(octTree_, basePos);
+  return volGain;
 }
 
 // ***************************************************************************
-bool rrt::u_coll(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
+bool octomap_man::u_coll(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
 {
   const double delLambda = octTree->getResolution() / (pos2 - pos1).norm();
 
@@ -30,16 +54,27 @@ bool rrt::u_coll(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
 }
 
 // ***************************************************************************
-bool rrt::u_coll(const Eigen::Vector3d& pos)
+bool octomap_man::u_coll(const Eigen::Vector3d& pos)
 {
+  double groundRoughness;
+  Eigen::Vector3d groundPt;
+
+  return u_coll(pos, groundRoughness, groundPt);
+}
+// ***************************************************************************
+bool octomap_man::u_coll(const Eigen::Vector3d& pos, double& groundRoughness, Eigen::Vector3d& groundPt)
+{
+  groundRoughness = 0;
+  groundPt = Eigen::Vector3d(0,0,0);
+
   if(vehicleType == "air")
-    u_coll_air(pos);
+    return u_coll_air(pos);
   else
-    u_coll_ground(pos);
+    return u_coll_ground(pos, groundRoughness, groundPt);
 }
 
 // ***************************************************************************
-bool rrt::u_coll_air(const Eigen::Vector3d& pos)
+bool octomap_man::u_coll_air(const Eigen::Vector3d& pos)
 {
   double distObs = octDist_->getDistance ( octomap::point3d( pos(0), pos(1), pos(2) ) );
 
@@ -53,9 +88,82 @@ bool rrt::u_coll_air(const Eigen::Vector3d& pos)
 }
 
 // ***************************************************************************
-bool rrt::u_coll_ground(const Eigen::Vector3d& pos)
+bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos, double& roughness, Eigen::Vector3d& groundPt) 
 {
+  // projects the robot's shadow image (square) to ground and checks for feasibility/collision/terrain
 
+  //Eigen::MatrixXd surfCoords = surfCoordsBase_ + pos.transpose();
+
+  if( surfCoordsBase_.rows() < 1 ) // if the robot is represented by no surface shadow, then it's collision-free
+    return false;
+
+  const double successfulProjectionsPercent = 0.75;  // if projections success is smaller, it's a cliff or severe decline so return false in that case
+  int successfulProjections = 0;
+
+  roughness = 0;
+  groundPt = Eigen::Vector3d(0,0,0);
+
+  double currRoughness = 0;
+  Eigen::Vector3d currGroundPt(0,0,0);
+  for(int i=0; i<surfCoordsBase_.rows(); i++)
+  {
+    if( !project_point_to_ground( surfCoordsBase_.row(i).transpose() + pos, currRoughness, currGroundPt ) ) // translate robot shadow point to pos and project
+      continue;
+    roughness += currRoughness;
+    groundPt += currGroundPt;
+    successfulProjections++;
+  }
+
+  if( double(successfulProjections) / double(surfCoordsBase_.rows()) < successfulProjectionsPercent )
+    return true;
+
+  roughness = roughness / double(successfulProjections);
+  groundPt = groundPt / double(successfulProjections);
+
+  if( roughness > maxGroundRoughness )
+    return true;
+
+  return false;
+}
+
+// ***************************************************************************
+bool octomap_man::project_point_to_ground(const Eigen::Vector3d& pos, double& roughness, Eigen::Vector3d& groundPt)
+{
+  // returns if a ground is found (true) or not (false), alongwith ground roughness and point
+
+  octomap::OcTreeKey currKey = octomap::coordToKey (pos(0), pos(1), pos(2)); // initialize key at current robot position
+
+  if (octTree->search(currKey)->getLogOdds() > 0) // if the pos to project is occupied, cannot project to ground
+    return false;
+
+  for(int i=0; i < ceil(groundPlaneSearchDist_/octTree_->getResolution()); i++ ) // until the search distance is over
+  {
+    currKey.k[2]++;
+    octomap::OcTreeNode* currNode = octTree->search(currKey);
+    if (currNode == NULL) // if unknown
+      continue;
+    if (currNode->getLogOdds() < 0) // if free
+      continue;
+
+    // if an occupied cell is found, it is ground, now calculate the roughness and return the point
+    octomap::point3d groundPtOct = keyToCoord(currKey);
+    groundPt(0) = groundPtOct.x();
+    groundPt(1) = groundPtOct.y();
+    groundPt(2) = groundPtOct.z();
+
+    std::vector<octomap::point3d> surfNormal;
+    if ( octomap::getNormals (groundPtOct, surfNormal, true) ) // treat unknown as occupied, it should never encounter an unknown cell
+      roughness = surfNormal.angleTo( std::vector<octomap::point3d>(0,0,1) );
+    else
+    {
+      // for debugging, to observe the reliability of the function
+      ROS_WARN("Surface normal not available, assuming (0,0,1)");
+      roughness = 0;
+    }
+    return true;
+  }
+
+  return false;
 }
 
 // ***************************************************************************

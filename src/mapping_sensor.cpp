@@ -48,6 +48,22 @@ int mapping_sensor::n_ray_unseen_voxels(const Eigen::Vector3d& startPt, const Ei
   }
   return nUnseenVoxels;
 }
+// ***************************************************************************
+double mapping_sensor::volumetric_gain(octomap::OcTree* octTree, const Eigen::Vector3d& basePos)
+{
+  double volGain = 0.0;
+
+  for(int i=0; i<multiRayEndPts_.rows(); i++)
+  {
+    Eigen::Vector3d endPt(multiRayEndPts_(i,0) + basePos(0), 
+                          multiRayEndPts_(i,1) + basePos(1), 
+                          multiRayEndPts_(i,2) + basePos(2));
+
+    volGain += n_ray_unseen_voxels(basePos, endPt, octTree); // startPt = basePos
+  }
+
+  return volGain*pow(octTree->getResolution(),3);
+}
 
 // ***************************************************************************
 double mapping_sensor::volumetric_gain(octomap::OcTree* octTree, const geometry_msgs::TransformStamped& baseToWorld)
