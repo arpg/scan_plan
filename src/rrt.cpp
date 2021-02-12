@@ -1,21 +1,25 @@
 #include "rrt.h"
 
 // ***************************************************************************
-rrt::rrt(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist, double radRob, int failItr, DynamicEDTOctomap* octDist)
+rrt::rrt(int nNodes, std::vector<double> minBnds, std::vector<double> maxBnds, double radNear, double delDist, double radRob, int failItr)
 {
-  octDist_ = octDist;
   init(nNodes, minBnds, maxBnds, radNear, delDist, radRob, failItr);
 }
 
 // ***************************************************************************
-void rrt::init(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist, double radRob, int failItr)
+void rrt::init(int nNodes, std::vector<double> minBnds, std::vector<double> maxBnds, double radNear, double delDist, double radRob, int failItr)
 {
   posNds_.resize(nNodes,3);
   cstNds_.resize(nNodes);
   idPrnts_.resize(nNodes);
 
-  std::memcpy(minBnds_, minBnds, sizeof(double)*3);
-  std::memcpy(maxBnds_, maxBnds, sizeof(double)*3);
+  minBnds_[0] = minBnds[0];
+  minBnds_[1] = minBnds[1];
+  minBnds_[2] = minBnds[2];
+
+  maxBnds_[0] = maxBnds[0];
+  maxBnds_[1] = maxBnds[1];
+  maxBnds_[2] = maxBnds[2];
 
   radNear_ = radNear;
   nearNds_.reserve(nNodes);
@@ -214,6 +218,7 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
       }
     }
 
+    // TODO: make succRad a parameter
     if (posRoot != posGoal && (posNds_.row(actNds_-1).transpose() - posGoal).squaredNorm() < pow(radRob_*4,2) ) // assuming succRad = radRob_*4
       return actNds_-1;
 

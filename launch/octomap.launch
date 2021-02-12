@@ -1,11 +1,17 @@
 <launch>
-	<node pkg="octomap_server" type="octomap_server_node" name="octomap_server">
+	<node pkg="octomap_server" type="octomap_server_node" name="octomap_server" clear_params="true">
 		<param name="resolution" value="0.15" />
 		
 		<param name="frame_id" type="string" value="world" />
 		
 		<param name="sensor_model/max_range" value="10.0" />
 		
+    <!-- param name="filter_ground" value="true"/>
+    <param name="ground_filter/distance" value="0.1"/>
+    <param name="ground_filter/angle" value="0.04"/>
+    <param name="ground_filter/plane_distance" value="0.2"/>
+    <param name="base_frame_id" value="A01/base_link"/ -->
+
 		<remap from="cloud_in" to="/A01/points" /> 
 	
 	</node>

@@ -63,13 +63,14 @@ bool graph::add_vertex(const gvert vertIn)
       boost::add_edge( vertInDesc, *it, dist, *adjList_ );
 
     //std::cout << "Help2" << std::endl;
+  }
 
-    if(vertIn.isFrontier && success)
-    {
-      frontier front;
-      front.vertDesc = vertInDesc;
-      frontiers_.push_front(front);
-    }
+  if(vertIn.isFrontier && success)
+  {
+    frontier front;
+    front.vertDesc = vertInDesc;
+    front.volGain = 0.0;
+    frontiers_.push_front(front);
   }
 
   return success;
@@ -218,7 +219,7 @@ void graph::publish_viz(ros::Publisher& vizPub)
   {
     frontViz.pose.position.x = (*adjList_)[front.vertDesc].pos(0);
     frontViz.pose.position.y = (*adjList_)[front.vertDesc].pos(1);
-    frontViz.pose.position.z = (*adjList_)[front.vertDesc].pos(2);
+    frontViz.pose.position.z = (*adjList_)[front.vertDesc].pos(2)+1.0;
     frontViz.pose.orientation.w = 1;
     
     frontViz.id = idFrontViz++;
@@ -247,6 +248,10 @@ void graph::update_frontiers_vol_gain()
   if(frontiers_.empty())
     return;
 
+  int sz = 0;
+  for(frontier& front: frontiers_)
+    sz++;
+  std::cout << "Num Frontiers: " <<  sz << std::endl;
   for(frontier& front: frontiers_)
     front.volGain = volumetric_gain( (*adjList_)[front.vertDesc].pos, octTree_, sensRange_ );
   double minV = minVolGain_;
@@ -256,6 +261,15 @@ void graph::update_frontiers_vol_gain()
 // ***************************************************************************
 double graph::volumetric_gain(Eigen::Vector3d ptIn, octomap::OcTree* octTree, double sensRange)
 {
+
+  octomap::point3d_list node_centers;
+
+  std::cout << ptIn.transpose() << std::endl;
+  //getchar();
+
+  octTree->getUnknownLeafCenters( node_centers, octomap::point3d(ptIn(0)-sensRange, ptIn(1)-sensRange, ptIn(2)-sensRange), octomap::point3d(ptIn(0)+sensRange, ptIn(1)+sensRange, ptIn(2)+sensRange) ); 
+  return node_centers.size();
+
   // assuming sensor FOV is cube around the robot
   octomap::OcTreeKey octKeySrc = octTree->coordToKey( octomap::point3d(ptIn(0),ptIn(1),ptIn(2)) );
 

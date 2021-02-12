@@ -115,7 +115,7 @@ find_package(PythonLibs REQUIRED)
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES scan_plan ph_cam rrt
+  LIBRARIES scan_plan ph_cam rrt graph mapping_sensor
 #  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy sensor_msgs std_msgs
 #  DEPENDS system_lib
 )
@@ -150,6 +150,9 @@ include_directories(
  add_library(graph
    src/graph.cpp
  )
+ add_library(mapping_sensor
+   src/mapping_sensor.cpp
+ )
 
 
 ## Add cmake target dependencies of the library
@@ -159,6 +162,7 @@ include_directories(
  add_dependencies(ph_cam ${catkin_EXPORTED_TARGETS})
  add_dependencies(rrt ${catkin_EXPORTED_TARGETS})
  add_dependencies(graph ${catkin_EXPORTED_TARGETS})
+ add_dependencies(mapping_sensor ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
@@ -177,10 +181,11 @@ include_directories(
 
 #target_include_directories(rrt PRIVATE ${PYTHON_INCLUDE_DIRS})
 ## Specify libraries to link a library or executable target against
+ target_link_libraries(mapping_sensor ${catkin_LIBRARIES} ${PYTHON_LIBRARIES})
  target_link_libraries(rrt ${catkin_LIBRARIES} ${PYTHON_LIBRARIES})
  target_link_libraries(graph ${catkin_LIBRARIES} ${PYTHON_LIBRARIES} rrt)
  target_link_libraries(ph_cam ${catkin_LIBRARIES} /usr/local/openGJK/libopenGJKlib.a)
- target_link_libraries(scan_plan ${catkin_LIBRARIES} ph_cam rrt graph ${OCTOMAP_LIBRARIES} ${DYNAMICEDT3D_LIBRARIES})
+ target_link_libraries(scan_plan ${catkin_LIBRARIES} ph_cam rrt graph mapping_sensor ${OCTOMAP_LIBRARIES} ${DYNAMICEDT3D_LIBRARIES})
  target_link_libraries(scan_plan_node ${catkin_LIBRARIES} scan_plan)
 
 #############

@@ -55,8 +55,8 @@ private:
  
 public:
   ~rrt();
-  rrt(int, double[3], double[3], double, double, double, int, DynamicEDTOctomap*);
-  void init(int, double[3], double[3], double, double, double, int);
+  rrt(int, std::vector<double>, std::vector<double>, double, double, double, int);
+  void init(int, std::vector<double>, std::vector<double>, double, double, double, int);
   
 
   void clear();

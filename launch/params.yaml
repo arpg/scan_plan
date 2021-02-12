@@ -2,12 +2,15 @@ n_rrt_nodes: 600
 
 min_bounds: [-10, -10, -3.0]
 max_bounds: [10, 10, 3.0]
+#min_bounds: [-10, -10, -0.1]
+#max_bounds: [10, 10, 1.1]
 
 near_radius_rrt: 2.0
 
 delta_distance_rrt: 1.0
 
 robot_radius: 1.0
+#robot_radius: 0.2
 
 n_fail_iterations_rrt: 1000
 

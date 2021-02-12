@@ -9,30 +9,14 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   nh_ = nh;
  
   tfListenerPtr_ = new tf2_ros::TransformListener(tfBuffer_);
-  wait_for_params(nh_);
-
-  ROS_INFO("%s: Waiting for first base to world transform ...", nh_->getNamespace().c_str());
-  while( !tfBuffer_.canTransform(worldFrameId_, baseFrameId_, ros::Time(0)) );
-    baseToWorld_ = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
-
-  Eigen::Vector3d currPos(baseToWorld_.transform.translation.x, 
-                          baseToWorld_.transform.translation.y, 
-                          baseToWorld_.transform.translation.z);
-  //graph_ = new graph(homePos_+=currPos, 10.0*rrtDelDist_, radRob_); // assuming graph near radius is 10 times rrt delta distance
-  double sensRange = 10;
-  double minVolGain = 0;
-  graph_ = new graph(Eigen::Vector3d(2.0,-1,1.5), 10.0*rrtDelDist_, radRob_, sensRange, minVolGain, worldFrameId_); // assuming graph near radius is 10 times rrt delta distance
+  setup_pose();
+  setup_sensors();
+  setup_rrt();
+  setup_graph();
+  setup_timers();
+  setup_scan_plan();
 
   //TODO: graph u_coll lambda is too large since the nearRad is 10.0*rrtDelDist_
-  //TODO: sensRange -> parameter
-
-  for(int i=0; i<nCams_; i++)
-  {
-    phCamsOpt_.push_back( ph_cam(camInfoK_.row(i).data(), camRes_.row(i).data(), discInt_.row(i).data()) );
-    phCamsBase_.push_back(phCamsOpt_[i]);
-    phCamsBase_[i].transform(camToBase_[i]);
-    phCamsBase_[i].print_polytope();
-  }
 
   octSub_ = nh->subscribe("octomap_in", 1, &scan_plan::octomap_cb, this);
 
@@ -41,8 +25,6 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   compTimePub_ = nh->advertise<std_msgs::Float64>("compute_time_out", 10);
   vizPub_ = nh->advertise<visualization_msgs::MarkerArray>("viz_out", 10);
   frontiersPub_ = nh->advertise<geometry_msgs::PoseArray>("frontiers_out", 10);
-
-  rrtTree_ = new rrt(rrtNNodes_, scanBnds_[0], scanBnds_[1], rrtRadNear_, rrtDelDist_, radRob_, rrtFailItr_, octDist_);
 
   pathPoses_.resize(0);
   path_.resize(0,0);
@@ -53,78 +35,120 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
 }
 
 // ***************************************************************************
-void scan_plan::wait_for_params(ros::NodeHandle* nh)
+void scan_plan::setup_pose()
 {
-
-  //while(!nh->getParam("distance_interval", distInt_));
-
-  while(!nh->getParam("n_rrt_nodes", rrtNNodes_));
- 
-  std::vector<double> minBnds, maxBnds;
-  while(!nh->getParam("min_bounds", minBnds));
-  while(!nh->getParam("max_bounds", maxBnds));
-  scanBnds_[0][0] = minBnds[0]; scanBnds_[0][1] = minBnds[1]; scanBnds_[0][2] = minBnds[2];
-  scanBnds_[1][0] = maxBnds[0]; scanBnds_[1][1] = maxBnds[1]; scanBnds_[1][2] = maxBnds[2];
-
-  while(!nh->getParam("near_radius_rrt", rrtRadNear_));
-  while(!nh->getParam("delta_distance_rrt", rrtDelDist_));
-  while(!nh->getParam("robot_radius", radRob_));
-  while(!nh->getParam("n_fail_iterations_rrt", rrtFailItr_));
-
-  std::vector<double> camRes;
-  while(!nh->getParam("camera_resolution", camRes));
-  nCams_ = camRes.size() / 3;
-
-  camRes_.resize(nCams_,3);
-  for(int i=0; i<nCams_; i++)
-    for(int j=0; j<3; j++)
-      camRes_(i,j) = camRes[i*3+j];
-
-  std::vector<double> camInfoK;
-  while(!nh->getParam("camera_info_k", camInfoK));
-  camInfoK_.resize(nCams_,9);
-  for(int i=0; i<nCams_; i++)
-    for(int j=0; j<9; j++)
-      camInfoK_(i,j) = camInfoK[i*9+j];
-
-  std::vector<double> discInt;
-  while(!nh->getParam("discretization_interval", discInt));
-  discInt_.resize(nCams_,3);
-  for(int i=0; i<nCams_; i++)
-    for(int j=0; j<3; j++)
-      discInt_(i,j) = discInt[i*3+j];
-  
+  // prereqs tfBuffer should be setup
+  ROS_INFO("%s: Waiting for base and world frame id params ...", nh_->getNamespace().c_str());
   while(!nh->getParam("base_frame_id", baseFrameId_));
   while(!nh->getParam("world_frame_id", worldFrameId_));
 
-  std::vector<std::string> camFrameId;
-  while(!nh->getParam("cam_frame_id", camFrameId));
+  ROS_INFO("%s: Waiting for base to world transform ...", nh_->getNamespace().c_str());
+  while( !tfBuffer_.canTransform(worldFrameId_, baseFrameId_, ros::Time(0)) );
+  update_base_to_world();
 
+  ROS_INFO("%s: Base to world transform alive", nh_->getNamespace().c_str());
+}
+// ***************************************************************************
+void scan_plan::setup_sensors()
+{
+  // prereqs setup_pose
+  ROS_INFO("%s: Waiting for sensor params ...", nh_->getNamespace().c_str());
+  std::vector<double> fovs, res, ranges;
+  std::vector<std::string> sensorFrameIds;
+  
+  while(!nh->getParam("sensor_fovs_horz_vert_degrees", fovs));
+  while(!nh->getParam("sensor_res_horz_vert_pts", res));
+  while(!nh->getParam("sensor_ranges", ranges));
+  while(!nh->getParam("sensor_frame_ids", sensorFrameIds));
+
+  ROS_INFO("%s: Waiting for sensors to base transforms ...", nh_->getNamespace().c_str());
+  std::vector<geometry_msgs::TransformStamped> sensorsToBase;
+  for(int i=0; i<sensorFrameIds.size(); i++)
+  {
+    while( !tfBuffer_.canTransform(baseFrameId_, sensorFrameIds[i], ros::Time(0)) );
+    sensorsToBase.push_back( tfBuffer_.lookupTransform(baseFrameId_, sensorFrameIds[i], ros::Time(0)) );  
+  }
+
+  ROS_INFO("%s: Setting up mapping sensors ...", nh_->getNamespace().c_str());
+  for(int i=0; i<sensorFrameIds.size(); i++)
+    mSensors_.push_back( mapping_sensor(fovs[i*2], fovs[(i*2)+1], res[i*2], res[(i*2)+1], ranges[i], sensorsToBase[i]) );
+  
+}
+// ***************************************************************************
+void scan_plan::setup_rrt()
+{
+  ROS_INFO("%s: Waiting for tree params ...", nh_->getNamespace().c_str());
+
+  std::vector<double> minBnds, maxBnds;
+  while(!nh->getParam("min_bounds_local", minBnds)); // [x_min, y_min, z_min]
+  while(!nh->getParam("max_bounds_local", maxBnds)); // [x_max, y_max, z_max]
+
+  double rrtRadNear, rrtDelDist, rrtFailItr, rrtNNodes;
+
+  while(!nh->getParam("n_rrt_nodes", rrtNNodes));
+  while(!nh->getParam("near_radius_rrt", rrtRadNear));
+  while(!nh->getParam("delta_distance_rrt", rrtDelDst));
+  while(!nh->getParam("n_fail_iterations_rrt", rrtFailItr));
+  while(!nh->getParam("robot_radius", radRob_));
+
+  ROS_INFO("%s: Setting up local tree ...", nh_->getNamespace().c_str());
+  rrtTree_ = new rrt(rrtNNodes, minBnds, maxBnds, rrtRadNear, rrtDelDist, radRob_, rrtFailItr);  
+}
+
+// ***************************************************************************
+void scan_plan::setup_graph()
+{
+  // prereqs setup_pose, setup_sensors, setup_rrt
+
+  ROS_INFO("%s: Waiting for graph params ...", nh_->getNamespace().c_str());
+  double graphRadNear, minVolGain;
+  std::vector<double> homePos;
+ 
+  while(!nh->getParam("near_radius_graph", graphRadNear));
+  while(!nh->getParam("min_vol_gain_cubic_m", minVolGain)); // used for local/global switching and removing frontiers
+  while(!nh->getParam("home_position", homePos)); 
+  
+  ROS_INFO("%s: Setting up graph ...", nh_->getNamespace().c_str());
+  //Eigen::Vector3d currPos(baseToWorld_.transform.translation.x, 
+  //                        baseToWorld_.transform.translation.y, 
+  //                        baseToWorld_.transform.translation.z);
+
+  graph_ = new graph(Eigen::Vector3d(homePos[0],homePos[1],homePos[2]), graphRadNear, radRob_, mSensors_, minVolGain, worldFrameId_);
+}
+
+// ***************************************************************************
+void scan_plan::setup_timers()
+{
+  ROS_INFO("%s: Waiting for timer params ...", nh_->getNamespace().c_str());
   double timeIntPhCam, timeIntReplan;
   while(!nh->getParam("time_interval_pose_graph", timeIntPhCam));
   while(!nh->getParam("time_interval_replan", timeIntReplan));
 
+  ROS_INFO("%s: Creating timers ...", nh_->getNamespace().c_str());
   timerPhCam_ = nh->createTimer(ros::Duration(timeIntPhCam), &scan_plan::timer_ph_cam_cb, this);
   timerReplan_ = nh->createTimer(ros::Duration(timeIntReplan), &scan_plan::timer_replan_cb, this);
+}
+
+// ***************************************************************************
+void scan_plan::setup_octomap()
+{
+  ROS_INFO("%s: Waiting for octomap params ...", nh_->getNamespace().c_str());
+  while(!nh->getParam("esdf_max_dist", maxDistEsdf_));
+  while(!nh->getParam("esdf_unknown_as_occupied", esdfUnknownAsOccupied_));
+
+  ROS_INFO("%s: Setting up octomap manager ...", nh_->getNamespace().c_str());
+  
+}
+
+// ***************************************************************************
+void scan_plan::setup_scan_plan()
+{
+  ROS_INFO("%s: Waiting for scan_plan params ...", nh_->getNamespace().c_str());
 
   while(!nh->getParam("c_gain", cGain_));
-
   while(!nh->getParam("lookahead_path_len", lookaheadDist_));
   while(!nh->getParam("n_hist_poses_exploration_dir", nHistPoses_));
-
-  std::vector<double> homePosOffset;
-  while(!nh->getParam("home_position_offset", homePosOffset));
-  homePos_ = Eigen::Vector3d(homePosOffset[0],homePosOffset[1],homePosOffset[2]);
-
-  ROS_INFO("%s: Parameters retrieved from parameter server", nh->getNamespace().c_str());
-
-  for(int i=0; i<nCams_; i++)
-  {
-    while( !tfBuffer_.canTransform(baseFrameId_, camFrameId[i], ros::Time(0)) );
-      camToBase_.push_back( tfBuffer_.lookupTransform(baseFrameId_, camFrameId[i], ros::Time(0)) );
-  }
-  
-  ROS_INFO("%s: Cam to base transforms received", nh->getNamespace().c_str());
+  while(!nh->getParam("path_res_for_lookahead_npts_per_seg", pathResLookaheadPt_));
 }
 
 // ***************************************************************************
@@ -143,37 +167,11 @@ bool scan_plan::update_base_to_world()
 }
 
 // ***************************************************************************
-void scan_plan::timer_ph_cam_cb(const ros::TimerEvent&)
+Eigen::Vector3d scan_plan::transform_to_eigen_pos(const geometry_msgs::TransformStamped& transformIn)
 {
-  if( (isInitialized_ & 0x01) != 0x01 )
-    return;
-
-  update_base_to_world();
-
-  if( (isInitialized_ & 0x02) == 0x02 )
-  {
-    Eigen::Vector3d currPos(baseToWorld_.transform.translation.x,
-                            baseToWorld_.transform.translation.y,
-                            baseToWorld_.transform.translation.z);
-    Eigen::Vector3d lastPos(poseHist_.poses.back().position.x,
-                            poseHist_.poses.back().position.y,
-                            poseHist_.poses.back().position.z);
-
-    if( (currPos-lastPos).norm() < 1.0) // 1.0 is distance between two poses in history, TODO: make it param
-      return;
-  }
-
-  if( (isInitialized_ & 0x02) != 0x02 )
-    isInitialized_ = isInitialized_ | 0x02;
-
-  place_ph_cams();
-  update_base_to_world();
-  geometry_msgs::Pose currPose;
-  currPose.position.x = baseToWorld_.transform.translation.x;
-  currPose.position.y = baseToWorld_.transform.translation.y;
-  currPose.position.z = baseToWorld_.transform.translation.z;
-  currPose.orientation = baseToWorld_.transform.rotation;
-  poseHist_.poses.push_back(currPose);
+  return ( Eigen::Vector3d ( transformIn.transform.translation.x, 
+                             transformIn.transform.translation.y, 
+                             transformIn.transform.translation.z ) ); 
 }
 
 // ***************************************************************************
@@ -183,16 +181,18 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
     return;
 
   ros::Time timeS = ros::Time::now();
-
+  
   update_base_to_world();
+  Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
 
-  double rrtBnds[2][3];
-  get_rrt_bounds(rrtBnds);
-  rrtTree_->set_bounds(rrtBnds[0], rrtBnds[1]);
-  rrtTree_->update_oct_dist(octDist_);
-  graph_->update_octomap(octDist_,octTree_);
+  //double rrtBnds[2][3];
+  //get_rrt_bounds(rrtBnds);
+  rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
+  rrtTree_->update_octomap_man(octomapMan_);
+  //rrtTree_->update_oct_dist(octDist_);
+  graph_->update_octomap_man(octomapMan_);
 
-  rrtTree_->build(Eigen::Vector3d(baseToWorld_.transform.translation.x, baseToWorld_.transform.translation.y, baseToWorld_.transform.translation.z));
+  rrtTree_->build(robPos);
 
   std::vector<int> idLeaves = rrtTree_->get_leaves();
   disp(idLeaves.size(), "Number of paths found");
@@ -244,6 +244,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   // update older node if within robot radius with updated terrain and collision information, the latter may mean taking nodes out of the graph
 
   //TODO: Consider including a check, update path if end-of-path is reached, and increase the replan time
+
+  graph_->update_frontiers_vol_gain();
    
   ros::Duration timeE = ros::Time::now() - timeS;
 
@@ -338,14 +340,40 @@ bool scan_plan::add_path_to_graph(Eigen::MatrixXd& path, graph*, bool containFro
 // ***************************************************************************
 void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 {
-  delete octTree_;
+  //delete octTree_;
   octomap::AbstractOcTree* tree = octomap_msgs::msgToMap(octmpMsg);
   octTree_ = dynamic_cast<octomap::OcTree*>(tree);
+
+  octomapMan_->update_octree(octTree_);
+  octomapMan_->update_esdf();
 
   init_dist_map();
 
   if( (isInitialized_ & 0x01) != 0x01 )
     isInitialized_ = isInitialized_ | 0x01;
+}
+
+// ***************************************************************************
+Eigen::Vector3d scan_plan::geofence_saturation(const Eigen::Vector3d& posIn)
+{
+  Eigen::Vector3d posOut = posIn;
+
+  if(posOut(0) < geoFenceMin(0))
+    pos(0) = geoFenceMin(0);
+  if(posOut(0) > geoFenceMax(0))
+    pos(0) = geoFenceMax(0);
+
+  if(posOut(1) < geoFenceMin(1))
+    pos(1) = geoFenceMin(1);
+  if(posOut(1) > geoFenceMax(1))
+    pos(1) = geoFenceMax(1);
+
+  if(posOut(2) < geoFenceMin(2))
+    pos(2) = geoFenceMin(2);
+  if(posOut(2) > geoFenceMax(2))
+    pos(2) = geoFenceMax(2);
+
+  return posOut;
 }
 
 // ***************************************************************************
@@ -362,42 +390,6 @@ void scan_plan::get_rrt_bounds(double (&rrtBnds)[2][3])
   rrtBnds[1][0] = baseToWorld_.transform.translation.x + scanBnds_[1][0];
   rrtBnds[1][1] = baseToWorld_.transform.translation.y + scanBnds_[1][1];
   rrtBnds[1][2] = baseToWorld_.transform.translation.z + scanBnds_[1][2];
-}
-
-// ***************************************************************************
-void scan_plan::place_ph_cams()
-{
-  if(!update_base_to_world()) 
-    return;
-
-  baseToWorld_ = tfBuffer_.lookupTransform(worldFrameId_, baseFrameId_, ros::Time(0));
-
-  for(int i=0; i<nCams_; i++)
-  {    
-    // adding to phCamsWorld_
-    phCamsWorld_.push_back(phCamsBase_[i]);
-    phCamsWorld_.back().transform(baseToWorld_);
-    // checking polytope for collision
-    std::vector<geometry_msgs::Point> poly = phCamsWorld_.back().get_polytope();
-    std::vector<bool> uCollVec(poly.size());
-    int falseCount = 0; 
-    for(int i=0; i<poly.size(); i++)
-    {
-      //std::cout << poly[i].x << ", " << poly[i].y << ", " << poly[i].z << std::endl;
-      uCollVec[i] = rrt::u_coll_octomap(Eigen::Vector3d(poly[i].x,poly[i].y,poly[i].z), 0.1, octDist_);
-      if(!uCollVec[i])
-        falseCount++;
-    }
-
-    if(falseCount == poly.size())
-      return;
-
-    // reinitializing polytope with collVec
-    phCamsWorld_.back().set_polytope(phCamsOpt_[i].get_polytope());
-    phCamsWorld_.back().shrink(uCollVec);
-    phCamsWorld_.back().transform(camToBase_[i]);
-    phCamsWorld_.back().transform(baseToWorld_); 
-  } 
 }
 
 // ***************************************************************************
@@ -421,9 +413,9 @@ void scan_plan::init_dist_map()
   //octTree_->getMetricMax(x,y,z);
   //octomap::point3d max(x, y, z);
 
-  bool unknownAsOccupied = true;
+  bool unknownAsOccupied = esdfUnknownAsOccupied_; // true
 
-  float maxDist = 5.0;
+  float maxDist = maxDistEsdf_; // 5.0
 
   delete octDist_;
   octDist_ = new DynamicEDTOctomap(maxDist, octTree_, min, max, unknownAsOccupied);
@@ -451,104 +443,6 @@ void scan_plan::test_script()
 }
 
 // ***************************************************************************
-std::vector<ph_cam> scan_plan::path_ph_cams(Eigen::MatrixXd& path, std::vector<geometry_msgs::TransformStamped>& baseToWorldOut)
-{
-  baseToWorldOut.resize(path.rows());
-  std::vector<ph_cam> phCamsPath(path.rows()*nCams_, phCamsBase_[0]);
-
-  Eigen::Vector3d pos1;
-  Eigen::Vector3d pos2;
-
-  for(int i=0; i<path.rows()-1; i++)
-  {
-    pos1 = Eigen::Vector3d(path(i,0), path(i,1), path(i,2));
-    pos2 = Eigen::Vector3d(path(i+1,0), path(i+1,1), path(i+1,2));
-    baseToWorldOut[i] = transform_msg(pos1, pos2);
-
-    for(int j=0; j<nCams_; j++)
-    {
-      phCamsPath[nCams_*i + j] = phCamsBase_[j];
-      phCamsPath[nCams_*i + j].transform(baseToWorldOut[i]);
-    }
-  }
-
-  baseToWorldOut[path.rows()-1] = transform_msg(pos1, pos2, false);
-  for(int j=0; j<nCams_; j++)
-  {
-    phCamsPath[nCams_*(path.rows()-1) + j] = phCamsBase_[j];
-    phCamsPath[nCams_*(path.rows()-1) + j].transform(baseToWorldOut[path.rows()-1]);
-  }
-
-  return phCamsPath;
-}
-// ***************************************************************************
-double scan_plan::nearest(ph_cam phCamIn, std::vector<ph_cam>& phCamLst)
-{
-  if(phCamLst.size() == 0)
-    return 0.0;
-
-  double minDist = phCamLst[0].distance(phCamIn);
-
-  for(int i=1; i<phCamLst.size(); i++)
-  {
-    double dist = phCamLst[i].distance(phCamIn);
-    if( dist < minDist )
-      minDist = dist;
-  }
-
-  return minDist;
-}
-
-// ***************************************************************************
-double scan_plan::heading_diff(double currYaw, std::vector<geometry_msgs::TransformStamped>& pathPoses)
-{
-  const double discountFactor = 0.7;
-
-  double yawMse = 0;
-  for(int i=0; i<pathPoses.size(); i++)
-  {
-    double yawDiff = quat_to_yaw(pathPoses[i].transform.rotation) - currYaw;
-
-    if(yawDiff > 3.14159)
-      yawDiff = 2*3.14159 - yawDiff;
-    if(yawDiff < -3.14159)
-      yawDiff = 2*3.14159 + yawDiff;
-    
-    yawMse = yawMse + abs(yawDiff)*pow(discountFactor,i);
-  }
-
-  return yawMse; //pathPoses.size();
-}
-
-// ***************************************************************************
-double scan_plan::height_diff(double currHeight, Eigen::MatrixXd& path)
-{
-  double absHeightErr = 0;
-  for(int i=0; i<path.rows(); i++)
-  {
-    absHeightErr += abs( path(i,2) - currHeight );
-  }
-
-  return absHeightErr/path.rows();
-}
-
-// ***************************************************************************
-double scan_plan::fov_dist(std::vector<ph_cam>& phCamsPath)
-{
-  double dist = 0;
-  for(int i=0; i<phCamsPath.size(); i++)
-   dist = dist + nearest(phCamsPath[i], phCamsWorld_);
-
-  dist = dist / phCamsPath.size();
-}
-
-// ***************************************************************************
-void scan_plan::path_cost(Eigen::MatrixXd& path)
-{
-  double pathLen = 0;
-}
-
-// ***************************************************************************
 double scan_plan::quat_to_yaw(geometry_msgs::Quaternion quat)
 {
   tf2::Quaternion tfRot;
@@ -569,171 +463,6 @@ geometry_msgs::Quaternion scan_plan::yaw_to_quat(double yaw)
 }
 
 // ***************************************************************************
-geometry_msgs::TransformStamped scan_plan::transform_msg(Eigen::Vector3d pos1, Eigen::Vector3d pos2, bool loc) 
-{
-  geometry_msgs::TransformStamped transform;
-  transform.header.frame_id = worldFrameId_;
-  transform.child_frame_id = baseFrameId_;
-
-  if(loc)
-  {
-    transform.transform.translation.x = pos1(0);
-    transform.transform.translation.y = pos1(1);
-    transform.transform.translation.z = pos1(2);
-  }
-  else
-  {
-    transform.transform.translation.x = pos2(0);
-    transform.transform.translation.y = pos2(1);
-    transform.transform.translation.z = pos2(2);
-  }
-
-  Eigen::Vector3d pos = pos2 - pos1;
-
-  transform.transform.rotation = yaw_to_quat(atan2(pos(1), pos(0)));
-
-  return transform;
-}
-
-// ***************************************************************************
-void scan_plan::publish_path()
-{
-  if(pathPoses_.size() < 2)
-    return;
-
-  // publish path
-  nav_msgs::Path path;
-
-  path.header.frame_id = worldFrameId_;
-  path.header.stamp = ros::Time::now();
-  path.poses.resize(pathPoses_.size());
-
-  for(int i=0; i<pathPoses_.size(); i++)
-  {
-    path.poses[i].header.frame_id = path.header.frame_id;
-    path.poses[i].header.stamp = path.header.stamp;
-
-    path.poses[i].pose.position.x = pathPoses_[i].transform.translation.x;
-    path.poses[i].pose.position.y = pathPoses_[i].transform.translation.y;
-    path.poses[i].pose.position.z = pathPoses_[i].transform.translation.z;
-
-    path.poses[i].pose.orientation = pathPoses_[i].transform.rotation;
-  }
-  pathPub_.publish(path);
-}
-
-// ***************************************************************************
-void scan_plan::publish_lookahead()
-{
-  if(path_.size() < 2)
-    return;
-
-  //std::cout << "Interpolating" << std::endl;
-  Eigen::MatrixXd path = interpolate(path_, 5);
-
-  //std::cout << "Interpolated" << std::endl;
-  update_base_to_world();
-  Eigen::Vector3d robPos (baseToWorld_.transform.translation.x, 
-                          baseToWorld_.transform.translation.y, 
-                          baseToWorld_.transform.translation.z);
-
-  //std::cout << path << std::endl;
-  //std::cout << "Finding 1 m point" << std::endl;
-  //std::cout << ( (path.rowwise() - robPos.transpose()).rowwise().squaredNorm() ).array()  << std::endl;
-  
-  disp(path.rows(), "Path Size");
-  Eigen::VectorXd distVec = (path.rowwise() - robPos.transpose()).rowwise().squaredNorm(); // distance of each point from robot
-
-  disp(distVec.rows(), "Dist Vector Size");
-  //std::cout <<distVec << std::endl;
-
-  int minDistIndx;
-  distVec.minCoeff(&minDistIndx); // indx of closest point
-  disp(minDistIndx, "Min Dist Indx");
-  int indx; // indx of point 1m from min dist point
-  ( distVec.bottomRows(path.rows()-minDistIndx).array() - pow(lookaheadDist_,2) ).cwiseAbs().minCoeff(&indx);
-
-  indx = indx + minDistIndx;
-
-  disp(indx, "1m Indx");
-
-  std::cout << "Publishing" << indx << std::endl;
-  Eigen::Vector3d pos(path(indx,0), path(indx,1), path(indx,2));
-  // publish lookahead point
-  geometry_msgs::PointStamped lookahead;
-  lookahead.header.frame_id = worldFrameId_;
-  lookahead.header.stamp = ros::Time::now();
-
-  lookahead.point.x = pos(0);
-  lookahead.point.y = pos(1);
-  lookahead.point.z = pos(2);
-
-  //lookaheadPub_.publish(lookahead);
-}
-
-// ***************************************************************************
-Eigen::MatrixXd scan_plan::interpolate(Eigen::MatrixXd& path, int res) // res: number of points per segment
-{
-  if(path.rows() < 2)
-    return path;
-
-  Eigen::MatrixXd pathOut(res*(path.rows()-1)+1, path.cols());
-
-  double delTheta = 1/double(res);
-
-  int count = 0;
-  for(int i=0; i<(path.rows()-1); i++)
-  {
-    for(double theta=0; theta<1; theta+=delTheta)
-    {
-      pathOut.row(count) = (1-theta)*path.row(i) + theta*path.row(i+1);
-
-      count++;
-    }
-  }
-
-  pathOut.bottomRows(1) = path.bottomRows(1);
-  return pathOut;
-}
-
-// ***************************************************************************
-double scan_plan::exploration_direction(double& avgHeight)
-{
-  const int poseHistSize = poseHist_.poses.size();
-  const int nLastPoses = nHistPoses_;
-
-  if(poseHistSize < 2 || nLastPoses < 2)
-    return 0.0;
-
-  Eigen::Vector3d estDirVec(0,0,0);
-  avgHeight = 0;
-
-  int startIndx = std::max(0, poseHistSize - nLastPoses);
-
-  for(int i=startIndx; i<(poseHistSize-1); i++)
-  {
-    estDirVec += Eigen::Vector3d (poseHist_.poses[i+1].position.x - poseHist_.poses[i].position.x,
-                                  poseHist_.poses[i+1].position.y - poseHist_.poses[i].position.y,
-                                  poseHist_.poses[i+1].position.z - poseHist_.poses[i].position.z) . normalized();
-
-    avgHeight += poseHist_.poses[i].position.z;
-  }
-  avgHeight += poseHist_.poses[poseHistSize-1].position.z;
-  avgHeight = avgHeight / double(poseHistSize);
-
-  return std::atan2(estDirVec(1), estDirVec(0));
-}
-
-// ***************************************************************************
-double scan_plan::path_length(Eigen::MatrixXd& path)
-{
-  if(path.rows() == 0)
-    return 0;
-
-  return double(path.rows()-1)*rrtDelDist_;
-}
-
-// ***************************************************************************
 bool scan_plan::min_path_len(Eigen::MatrixXd& path)
 {
   double pathLength = path_length(path);
@@ -747,4 +476,5 @@ scan_plan::~scan_plan()
   delete octDist_;
   delete rrtTree_;
   delete graph_;
+  delete mSensors_;
 }

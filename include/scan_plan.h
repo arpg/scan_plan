@@ -21,18 +21,13 @@ class scan_plan
 private:
 
   ros::NodeHandle* nh_;
-  geometry_msgs::PoseArray poseHist_;
-  int nCams_;
-  std::vector<ph_cam> phCamsWorld_; 
-  std::vector<ph_cam> phCamsBase_;
-  std::vector<ph_cam> phCamsOpt_;
-
-  double scanBnds_[2][3]; // [min,max] x [x,y,z]
+  Eigen::MatrixXf posHist_;
+  int posHistSize_;
 
   ros::Subscriber octSub_;
+  ros::Subscriber poseHistSub_;
 
   ros::Publisher pathPub_;
-  ros::Publisher lookaheadPub_;
   ros::Publisher compTimePub_;
   ros::Publisher frontiersPub_;
   ros::Publisher vizPub_;
@@ -43,47 +38,39 @@ private:
   std::string baseFrameId_;
   std::string worldFrameId_;
 
-  std::vector<geometry_msgs::TransformStamped> camToBase_;
   geometry_msgs::TransformStamped baseToWorld_;
 
-  Eigen::MatrixXd camInfoK_;
-  Eigen::MatrixXd camRes_;
-  Eigen::MatrixXd discInt_;
-
   rrt* rrtTree_;
-  octomap::OcTree* octTree_ = NULL;
-  DynamicEDTOctomap* octDist_ = NULL;
+  octomap_man* octomapMan_;
 
   uint8_t isInitialized_;
 
-  int rrtNNodes_;
-  double rrtRadNear_;
-  double rrtDelDist_;
-
   double radRob_; // max dist to obs to declare collision
 
-  int rrtFailItr_;
-
-  ros::Timer timerPhCam_;
   ros::Timer timerReplan_;
 
   std::vector<double> cGain_;
 
-  double lookaheadDist_;
+  //Eigen::MatrixXd path_;
 
-  Eigen::MatrixXd path_;
-  std::vector<geometry_msgs::TransformStamped> pathPoses_;
-
-  int nHistPoses_;
+  int nHistPosesExpDir_; // number of last poses to calculate exploration heading
 
   graph* graph_;
   Eigen::Vector3d homePos_;
+
+  std::vector<mapping_sensor> mSensors_;
+
+  Eigen::Vector3d localBndsMin_;  
+  Eigen::Vector3d localBndsMax_;
+
+  Eigen::Vector3d geoFenceMin_;
+  Eigen::Vector3d geoFenceMax_;
 
 public:
   scan_plan(ros::NodeHandle*);
   ~scan_plan();
 
-  void wait_for_params(ros::NodeHandle*);
+
   void build_tree(double*, double*, double);
   void init_dist_map();
 
@@ -95,6 +82,13 @@ public:
 
   void test_script();
   void place_ph_cams();
+
+  void setup_pose();
+  void setup_sensors();
+  void setup_rrt();
+  void setup_graph();
+  void setup_timers();
+  void setup_scan_plan();
 
   bool update_base_to_world();
   geometry_msgs::TransformStamped transform_msg(Eigen::Vector3d pos1, Eigen::Vector3d pos2, bool loc=true);
