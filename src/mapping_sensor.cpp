@@ -24,8 +24,6 @@ mapping_sensor::mapping_sensor(double fovH, double fovV, double resH, double res
 
   sensorToBase_ = sensorToBase;
 
-  multiRayEndPts_.resize(resH*resV, 3);
-
   populate_multiray_endpts();
 }
 // ***************************************************************************
@@ -106,10 +104,18 @@ void mapping_sensor::populate_multiray_endpts()
   // assuming symmetric fovs
   // populating in body frame
 
-  int i = 0;
-  for (double h_ang = 0; h_ang < fovH_; h_ang = h_ang+fovH_/resH_)
-    for (double v_ang = (pi_/2-fovV_/2); v_ang < (pi_/2+fovV_/2); v_ang = v_ang+fovV_/resV_)
+  multiRayEndPts_.resize(resH_*resV_, 3);
+
+  for(int n_h = 0; n_h < resH_; n_h++)
+    for(int n_v = 0; n_v < resV_; n_v++)
     {
+      double h_ang = fovH_/resH_ * n_h;
+      double v_ang = (fovV_/resV_ * n_v) + (pi_/2 - fovV_/2);
+
+      //std::cout << "h_ang: " << h_ang*180/pi_ << std::endl;
+      //std::cout << "v_ang: " << v_ang*180/pi_ << std::endl;
+      //std::cout << "max_v_ang: " << (pi_/2+fovV_/2)*180/pi_ << std::endl;
+
       Eigen::Vector3d pt;
       pt(0) = range_ * sin(v_ang) * cos(h_ang);
       pt(1) = range_ * sin(v_ang) * sin(h_ang); 
@@ -117,10 +123,8 @@ void mapping_sensor::populate_multiray_endpts()
 
       pt = transform_point(pt, sensorToBase_);
 
-      multiRayEndPts_(i,0) = pt(0);
-      multiRayEndPts_(i,1) = pt(1);
-      multiRayEndPts_(i,2) = pt(2);
-
-      i++;
+      multiRayEndPts_(n_h*resV_ + n_v,0) = pt(0);
+      multiRayEndPts_(n_h*resV_ + n_v,1) = pt(1);
+      multiRayEndPts_(n_h*resV_ + n_v,2) = pt(2);
     }
 }

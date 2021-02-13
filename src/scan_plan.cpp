@@ -10,8 +10,8 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
  
   tfListenerPtr_ = new tf2_ros::TransformListener(tfBuffer_);
   setup_pose();
-  setup_octomap();
   setup_sensors();
+  setup_octomap();
   setup_rrt();
   setup_graph();
   setup_timers();
@@ -28,8 +28,9 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   frontiersPub_ = nh->advertise<geometry_msgs::PoseArray>("frontiers_out", 10);
 
   ROS_INFO("%s: Waiting for the input map ...", nh->getNamespace().c_str());
-  while( (isInitialized_ & 0x01) != 0x01 )
-	  ros::spinOnce();
+  //while( (isInitialized_ & 0x01) != 0x01 )
+	//  ros::spinOnce();
+  ROS_INFO("%s: Exiting constructor ...", nh->getNamespace().c_str());
 }
 
 // ***************************************************************************
@@ -83,6 +84,14 @@ void scan_plan::setup_rrt()
   while(!nh_->getParam("min_bounds_local", minBnds)); // [x_min, y_min, z_min]
   while(!nh_->getParam("max_bounds_local", maxBnds)); // [x_max, y_max, z_max]
 
+  localBndsMin_(0) = minBnds[0];
+  localBndsMin_(1) = minBnds[1];
+  localBndsMin_(2) = minBnds[2];
+
+  localBndsMax_(0) = maxBnds[0];
+  localBndsMax_(1) = maxBnds[1];
+  localBndsMax_(2) = maxBnds[2];
+
   double rrtRadNear, rrtDelDist, rrtFailItr, rrtNNodes;
 
   while(!nh_->getParam("n_rrt_nodes", rrtNNodes));
@@ -133,7 +142,8 @@ void scan_plan::setup_octomap()
   ROS_INFO("%s: Waiting for octomap params ...", nh_->getNamespace().c_str());
 
   std::string vehicleType;
-  double maxGroundRoughness, maxGroundStep, esdfUnknownAsOccupied, maxDistEsdf;
+  double maxGroundRoughness, maxGroundStep, maxDistEsdf;
+  bool esdfUnknownAsOccupied;
 
   while(!nh_->getParam("esdf_max_dist", maxDistEsdf));
   while(!nh_->getParam("esdf_unknown_as_occupied", esdfUnknownAsOccupied));
@@ -197,12 +207,14 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
     return;
 
   ros::Time timeS = ros::Time::now();
-  
+    disp(0, "Here");
   update_base_to_world();
+  disp(0, "Here");
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
+  disp(0, "Here");
 
   rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
-
+  disp(0, "Here");
   rrtTree_->build(robPos);
 
   std::vector<int> idLeaves = rrtTree_->get_leaves();
@@ -211,7 +223,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   // get all paths ending at leaves and choose one with min cost
   double currRobYaw = quat_to_yaw(baseToWorld_.transform.rotation);
   std::pair<double, double> currExpYawHeight = path_man::mean_heading_height(posHist_.topRows(posHistSize_), nHistPosesExpDir_); ////////
-
+  disp(0, "Here");
 
   int idPathLeaf = -1;
 
@@ -320,14 +332,16 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
 void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 {
   //delete octTree_;
+
   octomap::AbstractOcTree* tree = octomap_msgs::msgToMap(octmpMsg);
   octomap::OcTree* octTree = dynamic_cast<octomap::OcTree*>(tree);
 
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
-
   octMan_->update_octree(octTree);
+
   octMan_->update_esdf(localBndsMin_+robPos, localBndsMax_+robPos);
+  octMan_->update_robot_pos(robPos);
 
   if( (isInitialized_ & 0x01) != 0x01 )
     isInitialized_ = isInitialized_ | 0x01;
@@ -405,7 +419,7 @@ bool scan_plan::min_path_len(Eigen::MatrixXd& path)
 void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
 {
   if(poseHistMsg.poses.size() > posHist_.size())
-    posHist_.conservativeResize(posHist_.size()+100, Eigen::NoChange);
+    posHist_.conservativeResize(poseHistMsg.poses.size()+100, 3);
 
   for(int i=0; i<poseHistMsg.poses.size(); i++)
   {
@@ -415,6 +429,8 @@ void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
   }
 
   posHistSize_ = poseHistMsg.poses.size();
+  if( (isInitialized_ & 0x02) != 0x02 )
+    isInitialized_ = isInitialized_ | 0x02;
 }
 
 // ***************************************************************************

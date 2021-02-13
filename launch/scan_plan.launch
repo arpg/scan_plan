@@ -2,6 +2,7 @@
 
   <node name="scan_plan_node" pkg="scan_plan" type="scan_plan_node" output="screen" clear_params="true">
     <remap from="/scan_plan_node/octomap_in" to="/octomap_binary"/>
+    <remap from="/scan_plan_node/pose_hist_in" to="/A01/pose_history"/>
 
     <rosparam command="load" file="$(find scan_plan)/launch/params.yaml" subst_value="true"/>
   </node>
@@ -45,5 +46,8 @@
 		<remap from="~/octomap_in" to="/fore/octomap_binary" /> 
 	
 	</node>
+
+  <include file="$(find scan_plan)/launch/octomap.launch"/>
+  <include file="$(find ros_conversions)/launch/tf_to_path.launch"/>
 
 </launch>

@@ -71,7 +71,7 @@ bool octomap_man::u_coll_air(const Eigen::Vector3d& pos1, const Eigen::Vector3d&
   {
     pos = (1-lambda)*pos1 + lambda*pos2; 
 
-    if ( u_coll(pos) )
+    if ( u_coll(pos) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) ) // if the point is outside of robot's radius
       return true;
 
     lambda += delLambda;
@@ -237,16 +237,23 @@ void octomap_man::update_octree(octomap::OcTree* octTree)
   // creating robot shadow in base frame to be projected to the ground
   int robLenVoxs = ceil(2*radRob_ / octTree_->getResolution());
 
-  surfCoordsBase_.resize( pow(robLenVoxs,2), 2 ); // assuming square ground projection of the robot
+  surfCoordsBase_.resize( pow(robLenVoxs,2), 3 ); // assuming square ground projection of the robot
 
   for(int i=0; i<robLenVoxs; i++) // rows
     for(int j=0; j<robLenVoxs; j++) // columns
     {
       surfCoordsBase_(i*robLenVoxs+j,0) = -radRob_ + double(j)*octTree_->getResolution();
       surfCoordsBase_(i*robLenVoxs+j,1) = -radRob_ + double(i)*octTree_->getResolution();
+      surfCoordsBase_(i*robLenVoxs+j,2) = 0;
     }
 
   isInitialized_ = true;
+}
+
+// ***************************************************************************
+void octomap_man::update_robot_pos(const Eigen::Vector3d& robPos)
+{
+  robPos_ = robPos;
 }
 
 // ***************************************************************************

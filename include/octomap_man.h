@@ -30,6 +30,8 @@ private:
 
   std::vector<mapping_sensor> mapSensors_; // sensors that are building the map, useful to caluclate volumetric gain
 
+  Eigen::Vector3d robPos_;
+
   bool isInitialized_ = false;
  
 public:
@@ -47,6 +49,7 @@ public:
   bool project_point_to_ground(const Eigen::Vector3d& pos, double& roughness, Eigen::Vector3d& groundPt);
   void update_esdf(const Eigen::Vector3d& minBnds, const Eigen::Vector3d& maxBnds);
   void update_octree(octomap::OcTree* octTree);
+  void update_robot_pos(const Eigen::Vector3d&);
 };
 
 #endif

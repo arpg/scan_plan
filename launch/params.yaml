@@ -4,7 +4,7 @@ world_frame_id: world
 sensor_fovs_horz_vert_degrees: [360, 45] # append [horz,vert] for more sensors
 sensor_res_horz_vert_pts: [360, 64]
 sensor_ranges: [10]
-sensor_frame_ids: [A01/os1_lidar]
+sensor_frame_ids: [A01/base_link/front_laser]
 
 min_bounds_local: [-10, -10, -3.0] # used for local path planning
 max_bounds_local: [10, 10, 3.0]
