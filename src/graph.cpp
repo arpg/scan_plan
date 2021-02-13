@@ -2,7 +2,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-graph::graph(Eigen::Vector3d posRoot, double radNear, double radRob, double sensRange, double minVolGain, std::string frameId, octomap_man* octMan)
+graph::graph(Eigen::Vector3d posRoot, double radNear, double radRob, double minVolGain, std::string frameId, octomap_man* octMan)
 {
   adjList_ = new BiDirectionalGraph;
 
@@ -18,7 +18,6 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radRob, double sens
   radNear_ = radNear;
   radRob_ = radRob;
   frameId_ = frameId;
-  sensRange_ = sensRange;
   minVolGain_ = minVolGain;
 
   std::pair<VertexIterator, VertexIterator> vertItr = vertices(*adjList_);
@@ -81,7 +80,7 @@ bool graph::add_vertex(const gvert vertIn)
 // ***************************************************************************
 bool graph::u_coll(const gvert vert1, const gvert vert2)
 {
-  return octMan_->u_coll(vert1.pos, vert2.pos)
+  return octMan_->u_coll(vert1.pos, vert2.pos);
 }
 
 // ***************************************************************************
@@ -234,13 +233,38 @@ void graph::update_frontiers_vol_gain()
     sz++;
   std::cout << "Num Frontiers: " <<  sz << std::endl;
   for(frontier& front: frontiers_)
-    front.volGain = volumetric_gain( (*adjList_)[front.vertDesc].pos, octTree_, sensRange_ );
+    front.volGain = octMan_->volumetric_gain( (*adjList_)[front.vertDesc].pos );
   double minV = minVolGain_;
   frontiers_.remove_if( [&minV](const frontier& front) -> bool {return (front.volGain < minV);} ); // lambda expression
 }
 
 // ***************************************************************************
-double graph::volumetric_gain(Eigen::Vector3d ptIn, octomap::OcTree* octTree, double sensRange)
+bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
+{
+  bool success= false;
+
+  gvert vert;
+  for(int i=0; i<path.rows(); i++)
+  {
+    vert.pos = path.row(i);
+    vert.commSig = 0;
+    
+    if( containFrontier && i==(path.rows()-1) )
+      vert.isFrontier = true;
+    else
+      vert.isFrontier = false;
+
+    vert.terrain = gvert::UNKNOWN;
+
+    std::cout << "Adding vertex" << std::endl;
+    success = add_vertex(vert);
+  }
+
+  return success;
+}
+
+// ***************************************************************************
+double graph::volumetric_gain(Eigen::Vector3d ptIn, octomap::OcTree* octTree, double sensRange) // stale function
 {
 
   octomap::point3d_list node_centers;
@@ -288,7 +312,7 @@ double graph::volumetric_gain(Eigen::Vector3d ptIn, octomap::OcTree* octTree, do
 }
 
 // ***************************************************************************
-int graph::n_unseen_neighbors(octomap::OcTree* octTree, octomap::OcTreeKey* octKey)
+int graph::n_unseen_neighbors(octomap::OcTree* octTree, octomap::OcTreeKey* octKey) // stale function
 {
   int nN = 0;
 

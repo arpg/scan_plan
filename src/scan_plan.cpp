@@ -10,6 +10,7 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
  
   tfListenerPtr_ = new tf2_ros::TransformListener(tfBuffer_);
   setup_pose();
+  setup_octomap();
   setup_sensors();
   setup_rrt();
   setup_graph();
@@ -22,7 +23,6 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   poseHistSub_ = nh->subscribe("pose_hist_in", 1, &scan_plan::pose_hist_cb, this);
 
   pathPub_ = nh->advertise<nav_msgs::Path>("path_out", 10);
-  lookaheadPub_ = nh->advertise<geometry_msgs::PointStamped>("lookahead_out", 10);
   compTimePub_ = nh->advertise<std_msgs::Float64>("compute_time_out", 10);
   vizPub_ = nh->advertise<visualization_msgs::MarkerArray>("viz_out", 10);
   frontiersPub_ = nh->advertise<geometry_msgs::PoseArray>("frontiers_out", 10);
@@ -37,8 +37,8 @@ void scan_plan::setup_pose()
 {
   // prereqs tfBuffer should be setup
   ROS_INFO("%s: Waiting for base and world frame id params ...", nh_->getNamespace().c_str());
-  while(!nh->getParam("base_frame_id", baseFrameId_));
-  while(!nh->getParam("world_frame_id", worldFrameId_));
+  while(!nh_->getParam("base_frame_id", baseFrameId_));
+  while(!nh_->getParam("world_frame_id", worldFrameId_));
 
   ROS_INFO("%s: Waiting for base to world transform ...", nh_->getNamespace().c_str());
   while( !tfBuffer_.canTransform(worldFrameId_, baseFrameId_, ros::Time(0)) );
@@ -54,10 +54,10 @@ void scan_plan::setup_sensors()
   std::vector<double> fovs, res, ranges;
   std::vector<std::string> sensorFrameIds;
   
-  while(!nh->getParam("sensor_fovs_horz_vert_degrees", fovs));
-  while(!nh->getParam("sensor_res_horz_vert_pts", res));
-  while(!nh->getParam("sensor_ranges", ranges));
-  while(!nh->getParam("sensor_frame_ids", sensorFrameIds));
+  while(!nh_->getParam("sensor_fovs_horz_vert_degrees", fovs)); // input in degress, converted to radians
+  while(!nh_->getParam("sensor_res_horz_vert_pts", res));
+  while(!nh_->getParam("sensor_ranges", ranges));
+  while(!nh_->getParam("sensor_frame_ids", sensorFrameIds));
 
   ROS_INFO("%s: Waiting for sensors to base transforms ...", nh_->getNamespace().c_str());
   std::vector<geometry_msgs::TransformStamped> sensorsToBase;
@@ -69,7 +69,7 @@ void scan_plan::setup_sensors()
 
   ROS_INFO("%s: Setting up mapping sensors ...", nh_->getNamespace().c_str());
   for(int i=0; i<sensorFrameIds.size(); i++)
-    mapSensors_.push_back( mapping_sensor(fovs[i*2], fovs[(i*2)+1], res[i*2], res[(i*2)+1], ranges[i], sensorsToBase[i]) );
+    mapSensors_.push_back( mapping_sensor(fovs[i*2]*(pi_/180), fovs[(i*2)+1]*(pi_/180), res[i*2], res[(i*2)+1], ranges[i], sensorsToBase[i]) );
   
 }
 // ***************************************************************************
@@ -80,15 +80,15 @@ void scan_plan::setup_rrt()
   ROS_INFO("%s: Waiting for tree params ...", nh_->getNamespace().c_str());
 
   std::vector<double> minBnds, maxBnds;
-  while(!nh->getParam("min_bounds_local", minBnds)); // [x_min, y_min, z_min]
-  while(!nh->getParam("max_bounds_local", maxBnds)); // [x_max, y_max, z_max]
+  while(!nh_->getParam("min_bounds_local", minBnds)); // [x_min, y_min, z_min]
+  while(!nh_->getParam("max_bounds_local", maxBnds)); // [x_max, y_max, z_max]
 
   double rrtRadNear, rrtDelDist, rrtFailItr, rrtNNodes;
 
-  while(!nh->getParam("n_rrt_nodes", rrtNNodes));
-  while(!nh->getParam("near_radius_rrt", rrtRadNear));
-  while(!nh->getParam("delta_distance_rrt", rrtDelDst));
-  while(!nh->getParam("n_fail_iterations_rrt", rrtFailItr));
+  while(!nh_->getParam("n_rrt_nodes", rrtNNodes));
+  while(!nh_->getParam("near_radius_rrt", rrtRadNear));
+  while(!nh_->getParam("delta_distance_rrt", rrtDelDist));
+  while(!nh_->getParam("n_fail_iterations_rrt", rrtFailItr));
 
   ROS_INFO("%s: Setting up local tree ...", nh_->getNamespace().c_str());
   rrtTree_ = new rrt(rrtNNodes, minBnds, maxBnds, rrtRadNear, rrtDelDist, radRob_, rrtFailItr, octMan_);  
@@ -97,35 +97,33 @@ void scan_plan::setup_rrt()
 // ***************************************************************************
 void scan_plan::setup_graph()
 {
-  // prereqs setup_pose, setup_sensors, setup_rrt, setup_octomap
+  // prereqs setup_pose, setup_octomap
 
   ROS_INFO("%s: Waiting for graph params ...", nh_->getNamespace().c_str());
   double graphRadNear, minVolGain;
   std::vector<double> homePos;
  
-  while(!nh->getParam("near_radius_graph", graphRadNear));
-  while(!nh->getParam("min_vol_gain_cubic_m", minVolGain)); // used for local/global switching and removing frontiers
-  while(!nh->getParam("home_position", homePos)); 
+  while(!nh_->getParam("near_radius_graph", graphRadNear));
+  while(!nh_->getParam("min_vol_gain_cubic_m", minVolGain)); // used for local/global switching and removing frontiers
+  while(!nh_->getParam("home_position", homePos)); // must be collision-free
   
   ROS_INFO("%s: Setting up graph ...", nh_->getNamespace().c_str());
-  //Eigen::Vector3d currPos(baseToWorld_.transform.translation.x, 
-  //                        baseToWorld_.transform.translation.y, 
-  //                        baseToWorld_.transform.translation.z);
+  homePos_(0) = homePos[0];
+  homePos_(1) = homePos[1];
+  homePos_(2) = homePos[2];
 
-  graph_ = new graph(Eigen::Vector3d(homePos[0],homePos[1],homePos[2]), graphRadNear, radRob_, mapSensors_, minVolGain, worldFrameId_, octMan_);
+  graph_ = new graph(homePos_, graphRadNear, radRob_, minVolGain, worldFrameId_, octMan_);
 }
 
 // ***************************************************************************
 void scan_plan::setup_timers()
 {
   ROS_INFO("%s: Waiting for timer params ...", nh_->getNamespace().c_str());
-  double timeIntPhCam, timeIntReplan;
-  while(!nh->getParam("time_interval_pose_graph", timeIntPhCam));
-  while(!nh->getParam("time_interval_replan", timeIntReplan));
+  double timeIntReplan;
+  while(!nh_->getParam("time_interval_replan", timeIntReplan));
 
   ROS_INFO("%s: Creating timers ...", nh_->getNamespace().c_str());
-  timerPhCam_ = nh->createTimer(ros::Duration(timeIntPhCam), &scan_plan::timer_ph_cam_cb, this);
-  timerReplan_ = nh->createTimer(ros::Duration(timeIntReplan), &scan_plan::timer_replan_cb, this);
+  timerReplan_ = nh_->createTimer(ros::Duration(timeIntReplan), &scan_plan::timer_replan_cb, this);
 }
 
 // ***************************************************************************
@@ -135,32 +133,38 @@ void scan_plan::setup_octomap()
   ROS_INFO("%s: Waiting for octomap params ...", nh_->getNamespace().c_str());
 
   std::string vehicleType;
-  double maxGroundRoughness, maxGroundStep
+  double maxGroundRoughness, maxGroundStep, esdfUnknownAsOccupied, maxDistEsdf;
 
-  while(!nh->getParam("esdf_max_dist", maxDistEsdf_));
-  while(!nh->getParam("esdf_unknown_as_occupied", esdfUnknownAsOccupied_));
-  while(!nh->getParam("vehicle_type", vehicleType)); // "air", "ground"
-  while(!nh->getParam("robot_radius", radRob_));
-  while(!nh->getParam("max_ground_roughness", maxGroundRoughness)); // [-pi,pi]
-  while(!nh->getParam("max_ground_step", maxGroundStep)); // [epsilon,inf]
+  while(!nh_->getParam("esdf_max_dist", maxDistEsdf));
+  while(!nh_->getParam("esdf_unknown_as_occupied", esdfUnknownAsOccupied));
+  while(!nh_->getParam("vehicle_type", vehicleType)); // "air", "ground"
+  while(!nh_->getParam("robot_radius", radRob_));
+  while(!nh_->getParam("max_ground_roughness", maxGroundRoughness)); // [0, 180], angle from postive z
+  while(!nh_->getParam("max_ground_step", maxGroundStep)); // [epsilon,inf]
 
   ROS_INFO("%s: Setting up octomap manager ...", nh_->getNamespace().c_str());
-  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, vehicleType, radRob_, maxGroundRoughness, maxGroundStep, mapSensors_);
+  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, vehicleType, radRob_, maxGroundRoughness*(pi_/180), maxGroundStep, mapSensors_);
 }
 
 // ***************************************************************************
 void scan_plan::setup_scan_plan()
 {
+  // pre-reqs setup_graph
   ROS_INFO("%s: Waiting for scan_plan params ...", nh_->getNamespace().c_str());
 
-  while(!nh->getParam("c_gain", cGain_));
-  while(!nh->getParam("lookahead_path_len", lookaheadDist_));
-  while(!nh->getParam("n_hist_poses_exploration_dir", nHistPoses_));
-  while(!nh->getParam("path_res_for_lookahead_npts_per_seg", pathResLookaheadPt_));
-  while(!nh->getParam("min_bnds_geofence", geoFenceMin_));
-  while(!nh->getParam("max_bnds_geofence", geoFenceMax_)); // in world frame
-  while(!nh->getParam("n_hist_pts_for_exploration_dir", nHistPosesExpDir_));
-  while(!nh->getParam("home_position", homePos_)); // must be collision-free
+  std::vector<double> geoFenceMin, geoFenceMax;
+  while(!nh_->getParam("c_gain", cGain_));
+  while(!nh_->getParam("min_bnds_geofence", geoFenceMin));
+  while(!nh_->getParam("max_bnds_geofence", geoFenceMax)); // in world frame
+  while(!nh_->getParam("n_hist_pts_for_exploration_dir", nHistPosesExpDir_));
+
+  geoFenceMin_(0) = geoFenceMin[0];
+  geoFenceMin_(1) = geoFenceMin[1];
+  geoFenceMin_(2) = geoFenceMin[2];
+
+  geoFenceMax_(0) = geoFenceMax[0];
+  geoFenceMax_(1) = geoFenceMax[1];
+  geoFenceMax_(2) = geoFenceMax[2];
 }
 
 // ***************************************************************************
@@ -206,24 +210,26 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 
   // get all paths ending at leaves and choose one with min cost
   double currRobYaw = quat_to_yaw(baseToWorld_.transform.rotation);
-  std::pair<double, double> currExpYawHeight = path_man::mean_heading_height(posHist_.topRows(posHistSize_), posHistSize_); ////////
+  std::pair<double, double> currExpYawHeight = path_man::mean_heading_height(posHist_.topRows(posHistSize_), nHistPosesExpDir_); ////////
 
 
   int idPathLeaf = -1;
 
   double minCst = 10000;
+  
   for(int i=0; i<idLeaves.size(); i++)
   {
     Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
 
-    std::pair<double, double> pathYawHeightErr = mean_heading_height_err(std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), path);
-    double pathCst = cGain_[0] * exp( -1 * path_man::path_to_path_dist(path,....) ) // distance between candidate path and pose history path
+    std::pair<double, double> pathYawHeightErr = path_man::mean_heading_height_err(std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), path);
+    double pathCst = cGain_[0] * exp( -1 * path_man::path_to_path_dist(path,posHist_.topRows(posHistSize_)) ) // distance between candidate path and pose history path
                    + cGain_[1] * std::get<0>(pathYawHeightErr) // distance between the pose history and candidate path headings
                    + cGain_[2] * std::get<1>(pathYawHeightErr); // distance between the pose history and candidate path heights
 
     if( minCst > pathCst && min_path_len(path) ) // minimum path length condition
     {
       minCst = pathCst;
+      minCstPath_ = path;
       idPathLeaf = idLeaves[i];
     }
   }
@@ -239,6 +245,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   //TODO: Generate graph diconnect warning if no path is successfully added to the graph
   // Only add node to the graph if there is no existing node closer than radRob in graph lib, return success in that case since the graph is likely to be connected fine
   // update older node if within robot radius with updated terrain and collision information, the latter may mean taking nodes out of the graph
+  // consider immidiate replan if a path is not found by-passing timer
 
   //TODO: Consider including a check, update path if end-of-path is reached, and increase the replan time
 
@@ -247,7 +254,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   ros::Duration timeE = ros::Time::now() - timeS;
 
   std::cout << "Publishing lookahead path" << std::endl;
-  publish_path();
+  path_man::publish_path(minCstPath_, worldFrameId_, pathPub_);
 
   std::cout << "Publishing frontiers" << std::endl; 
   graph_->publish_frontiers(frontiersPub_); 
@@ -293,7 +300,7 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
     }
 
     std::cout << "HERE" << std::endl;
-    if( add_path_to_graph(path, gph, true) )
+    if( gph->add_path(path, true) )
       success = true;
     std::cout << "HERE2" << std::endl;
     nCurrGraphPaths++;
@@ -303,33 +310,8 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
   // lookahead path
   // assuming already checked for minimum path length
   path = tree->get_path(idLookaheadLeaf);
-  if( add_path_to_graph(path, gph, false) )
+  if( gph->add_path(path, false) )
     success = true;
-
-  return success;
-}
-
-// ***************************************************************************
-bool scan_plan::add_path_to_graph(Eigen::MatrixXd& path, graph*, bool containFrontier)
-{
-  bool success= false;
-
-  gvert vert;
-  for(int i=0; i<path.rows(); i++)
-  {
-    vert.pos = path.row(i);
-    vert.commSig = 0;
-    
-    if( containFrontier && i==(path.rows()-1) )
-      vert.isFrontier = true;
-    else
-      vert.isFrontier = false;
-
-    vert.terrain = gvert::UNKNOWN;
-
-    std::cout << "Adding vertex" << std::endl;
-    success = graph_->add_vertex(vert);
-  }
 
   return success;
 }
@@ -339,12 +321,13 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 {
   //delete octTree_;
   octomap::AbstractOcTree* tree = octomap_msgs::msgToMap(octmpMsg);
-  octTree_ = dynamic_cast<octomap::OcTree*>(tree);
+  octomap::OcTree* octTree = dynamic_cast<octomap::OcTree*>(tree);
 
-  octMan_->update_octree(octTree_);
-  octMan_->update_esdf();
+  update_base_to_world();
+  Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
 
-  init_dist_map();
+  octMan_->update_octree(octTree);
+  octMan_->update_esdf(localBndsMin_+robPos, localBndsMax_+robPos);
 
   if( (isInitialized_ & 0x01) != 0x01 )
     isInitialized_ = isInitialized_ | 0x01;
@@ -356,69 +339,21 @@ Eigen::Vector3d scan_plan::geofence_saturation(const Eigen::Vector3d& posIn)
   Eigen::Vector3d posOut = posIn;
 
   if(posOut(0) < geoFenceMin_(0))
-    pos(0) = geoFenceMin_(0);
+    posOut(0) = geoFenceMin_(0);
   if(posOut(0) > geoFenceMax_(0))
-    pos(0) = geoFenceMax_(0);
+    posOut(0) = geoFenceMax_(0);
 
   if(posOut(1) < geoFenceMin_(1))
-    pos(1) = geoFenceMin_(1);
+    posOut(1) = geoFenceMin_(1);
   if(posOut(1) > geoFenceMax_(1))
-    pos(1) = geoFenceMax_(1);
+    posOut(1) = geoFenceMax_(1);
 
   if(posOut(2) < geoFenceMin_(2))
-    pos(2) = geoFenceMin_(2);
+    posOut(2) = geoFenceMin_(2);
   if(posOut(2) > geoFenceMax_(2))
-    pos(2) = geoFenceMax_(2);
+    posOut(2) = geoFenceMax_(2);
 
   return posOut;
-}
-
-// ***************************************************************************
-void scan_plan::get_rrt_bounds(double (&rrtBnds)[2][3])
-{
-  //update_base_to_world();
-  // min bounds
-  double x_min = baseToWorld_.transform.translation.x + scanBnds_[0][0];
-  rrtBnds[0][0] = std::max(x_min, x_min);
-  rrtBnds[0][1] = baseToWorld_.transform.translation.y + scanBnds_[0][1];
-  rrtBnds[0][2] = baseToWorld_.transform.translation.z + scanBnds_[0][2];
-
-  // max bounds
-  rrtBnds[1][0] = baseToWorld_.transform.translation.x + scanBnds_[1][0];
-  rrtBnds[1][1] = baseToWorld_.transform.translation.y + scanBnds_[1][1];
-  rrtBnds[1][2] = baseToWorld_.transform.translation.z + scanBnds_[1][2];
-}
-
-// ***************************************************************************
-void scan_plan::init_dist_map()
-{ 
-  //dynamicEDT3D examples
-
-  // TODO:change to parameters
-
-  double rrtBnds[2][3];
-  get_rrt_bounds(rrtBnds);
-
-  octomap::point3d min(rrtBnds[0][0], rrtBnds[0][1], rrtBnds[0][2]);
-  octomap::point3d max(rrtBnds[1][0], rrtBnds[1][1], rrtBnds[1][2]);
-
-  //double x,y,z;
-
-  //octTree_->getMetricMin(x,y,z);
-  //octomap::point3d min(x, y, z);
-
-  //octTree_->getMetricMax(x,y,z);
-  //octomap::point3d max(x, y, z);
-
-  bool unknownAsOccupied = esdfUnknownAsOccupied_; // true
-
-  float maxDist = maxDistEsdf_; // 5.0
-
-  delete octDist_;
-  octDist_ = new DynamicEDTOctomap(maxDist, octTree_, min, max, unknownAsOccupied);
-
-  octDist_->update(true);  //This computes the distance map
-  std::cout << "Initialized dist map" << std::endl;
 }
 
 // ***************************************************************************
@@ -426,14 +361,14 @@ void scan_plan::test_script()
 {
  // graph gph(Eigen::Vector3d(0.6,0.5,12), 0.5);
 
-  return;
+  //return;
 
 // 1. Grow tree, check the nodes, paths, distance of each node from the map
-  rrtTree_->update_oct_dist(octDist_);
-  rrtTree_->build(Eigen::Vector3d(0.1,0,1.1));
+  //rrtTree_->update_oct_dist(octDist_);
+  //rrtTree_->build(Eigen::Vector3d(0.1,0,1.1));
 
-  std::cout << "Distance to (0.1,0,1.1) is " << octDist_->getDistance (octomap::point3d(0,0,0)) << std::endl;
-  std::cout << "Distance to (2,0,1) is " << octDist_->getDistance (octomap::point3d(2,0,1)) << std::endl;
+  //std::cout << "Distance to (0.1,0,1.1) is " << octDist_->getDistance (octomap::point3d(0,0,0)) << std::endl;
+  //std::cout << "Distance to (2,0,1) is " << octDist_->getDistance (octomap::point3d(2,0,1)) << std::endl;
 
   //rrtTree_->u_coll_octomap(Eigen::Vector3d(0,0,0));
   
@@ -462,15 +397,15 @@ geometry_msgs::Quaternion scan_plan::yaw_to_quat(double yaw)
 // ***************************************************************************
 bool scan_plan::min_path_len(Eigen::MatrixXd& path)
 {
-  double pathLength = path_length(path);
-  return (pathLength > (radRob_+0.1)) && (pathLength > (rrtDelDist_+0.1));
+  double pathLength = path_man::path_len(path);
+  return (pathLength > (radRob_+0.01)) && (pathLength > (rrtTree_->get_del_dist()+0.01));
 }
 
 // ***************************************************************************
 void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
 {
   if(poseHistMsg.poses.size() > posHist_.size())
-    posHist_.conservativeResize(posHist_.size()+100, NoChange_t);
+    posHist_.conservativeResize(posHist_.size()+100, Eigen::NoChange);
 
   for(int i=0; i<poseHistMsg.poses.size(); i++)
   {
@@ -478,15 +413,15 @@ void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
     posHist_(i,1) = poseHistMsg.poses[i].pose.position.y;
     posHist_(i,2) = poseHistMsg.poses[i].pose.position.z;
   }
+
+  posHistSize_ = poseHistMsg.poses.size();
 }
 
 // ***************************************************************************
 scan_plan::~scan_plan()
 {
-  delete octTree_;
-  delete octDist_;
   delete rrtTree_;
   delete graph_;
-  delete mapSensors_;
   delete octMan_;
+  delete tfListenerPtr_;
 }

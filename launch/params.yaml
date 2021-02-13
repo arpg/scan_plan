@@ -1,42 +1,34 @@
-n_rrt_nodes: 600
-
-min_bounds: [-10, -10, -3.0]
-max_bounds: [10, 10, 3.0]
-#min_bounds: [-10, -10, -0.1]
-#max_bounds: [10, 10, 1.1]
-
-near_radius_rrt: 2.0
-
-delta_distance_rrt: 1.0
-
-robot_radius: 1.0
-#robot_radius: 0.2
-
-n_fail_iterations_rrt: 1000
-
-# arrays with size proportional to number of cameras
-camera_info_k: [343.15907310693535, 0.0, 320.5, 0.0, 343.15907310693535, 240.5, 0.0, 0.0, 1.0]
-camera_resolution: [640, 480, 2.0]
-discretization_interval: [300,200,0.2]
-
-# frame ids
 base_frame_id: A01/base_link
 world_frame_id: world
-cam_frame_id: [A01/base_link/camera_front_optical]
 
-# time intervals
-time_interval_pose_graph: 0.1
-time_interval_replan: 3.0
+sensor_fovs_horz_vert_degrees: [360, 45] # append [horz,vert] for more sensors
+sensor_res_horz_vert_pts: [360, 64]
+sensor_ranges: [10]
+sensor_frame_ids: [A01/os1_lidar]
 
-# gains (fov dist, exp heading diff, exp height diff, robot heading diff)
+min_bounds_local: [-10, -10, -3.0] # used for local path planning
+max_bounds_local: [10, 10, 3.0]
+n_rrt_nodes: 600
+near_radius_rrt: 2.0
+delta_distance_rrt: 1.0
+n_fail_iterations_rrt: 1000
+
+near_radius_graph: 5.0 # 2 times delta_distance_rrt
+min_vol_gain_cubic_m: 50 # calculate wisely
+home_position: [4, 0, 1.5] # should be collision-free
+
+time_interval_replan: 5.0
+
+esdf_max_dist: 5.0 # greater than robot radius
+esdf_unknown_as_occupied: true
+vehicle_type: air
+robot_radius: 1.0
+max_ground_roughness: 30 # angle from positive z (radians)
+max_ground_step: 0.5 # greater than octomap resolution
+
 c_gain: [2.2, 0.8, 1.0, 0.1]
-
-# lookahead point distance
-lookahead_path_len: 2.0
-
-# number of history poses for exploration direction (must be greater than 2)
-n_hist_poses_exploration_dir: 8
-
-home_position_offset: [0, 0, 1.5]
+min_bnds_geofence: [3.5, -100000, -100000]
+max_bnds_geofence: [100000, 100000, 100000]
+n_hist_pts_for_exploration_dir: 10
 
 verbose: true

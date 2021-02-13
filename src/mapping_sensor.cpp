@@ -3,12 +3,12 @@
 // ***************************************************************************
 mapping_sensor::mapping_sensor(double fovH, double fovV, double resH, double resV, double range, geometry_msgs::TransformStamped sensorToBase)
 {
-  if(fovH < 0 || fovH > 360)
+  if(fovH < 0 || fovH > (2*pi_))
   {
     ROS_ERROR("Can't create mapping_sensor object, horizontal FOV must be (0,360]");
     return;
   }
-  if(fovV < 0 || fovV > 180)
+  if(fovV < 0 || fovV > (pi_))
   {
     ROS_ERROR("Can't create mapping_sensor object, vertical FOV must be (0,180]");
     return;
@@ -108,7 +108,7 @@ void mapping_sensor::populate_multiray_endpts()
 
   int i = 0;
   for (double h_ang = 0; h_ang < fovH_; h_ang = h_ang+fovH_/resH_)
-    for (double v_ang = (90-fovV_/2); v_ang < (90+fovV_/2); v_ang = v_ang+fovV_/resV_)
+    for (double v_ang = (pi_/2-fovV_/2); v_ang < (pi_/2+fovV_/2); v_ang = v_ang+fovV_/resV_)
     {
       Eigen::Vector3d pt;
       pt(0) = range_ * sin(v_ang) * cos(h_ang);

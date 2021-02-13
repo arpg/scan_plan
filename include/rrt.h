@@ -15,6 +15,7 @@
 
 #include "ros/ros.h"
 #include "visualization_msgs/MarkerArray.h"
+#include "octomap_man.h"
 
 // ***************************************************************************
 struct near_node
@@ -55,7 +56,7 @@ private:
  
 public:
   ~rrt();
-  rrt(int, std::vector<double>, std::vector<double>, double, double, double, int, octomap_man*);
+  rrt(int, const std::vector<double>&, const std::vector<double>&, double, double, double, int, octomap_man*);
   void init(int, std::vector<double>, std::vector<double>, double, double, double, int);
   
 
@@ -75,7 +76,8 @@ public:
   void print_near();
   void plot_tree();
   void plot_path(Eigen::MatrixXd);
-  void set_bounds(double[3], double[3]);
+  void set_bounds(const Eigen::Vector3d&, const Eigen::Vector3d&);
+  double get_del_dist();
   void publish_viz(ros::Publisher&, std::string, std::vector<int>&);
 };
 

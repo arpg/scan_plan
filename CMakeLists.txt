@@ -115,7 +115,7 @@ find_package(PythonLibs REQUIRED)
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES scan_plan ph_cam rrt graph mapping_sensor
+  LIBRARIES scan_plan rrt graph mapping_sensor octomap_man path_man
 #  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy sensor_msgs std_msgs
 #  DEPENDS system_lib
 )
@@ -141,8 +141,8 @@ include_directories(
  add_library(scan_plan
    src/scan_plan.cpp
  )
- add_library(ph_cam
-   src/ph_cam.cpp
+ add_library(octomap_man
+   src/octomap_man.cpp
  )
  add_library(rrt
    src/rrt.cpp
@@ -153,13 +153,17 @@ include_directories(
  add_library(mapping_sensor
    src/mapping_sensor.cpp
  )
+ add_library(path_man
+   src/path_man.cpp
+ )
 
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
  add_dependencies(scan_plan ${catkin_EXPORTED_TARGETS})
- add_dependencies(ph_cam ${catkin_EXPORTED_TARGETS})
+ add_dependencies(octomap_man ${catkin_EXPORTED_TARGETS})
+ add_dependencies(path_man ${catkin_EXPORTED_TARGETS})
  add_dependencies(rrt ${catkin_EXPORTED_TARGETS})
  add_dependencies(graph ${catkin_EXPORTED_TARGETS})
  add_dependencies(mapping_sensor ${catkin_EXPORTED_TARGETS})
@@ -183,9 +187,10 @@ include_directories(
 ## Specify libraries to link a library or executable target against
  target_link_libraries(mapping_sensor ${catkin_LIBRARIES} ${PYTHON_LIBRARIES})
  target_link_libraries(rrt ${catkin_LIBRARIES} ${PYTHON_LIBRARIES})
- target_link_libraries(graph ${catkin_LIBRARIES} ${PYTHON_LIBRARIES} rrt)
- target_link_libraries(ph_cam ${catkin_LIBRARIES} /usr/local/openGJK/libopenGJKlib.a)
- target_link_libraries(scan_plan ${catkin_LIBRARIES} ph_cam rrt graph mapping_sensor ${OCTOMAP_LIBRARIES} ${DYNAMICEDT3D_LIBRARIES})
+ target_link_libraries(graph ${catkin_LIBRARIES} ${PYTHON_LIBRARIES})
+ target_link_libraries(octomap_man ${catkin_LIBRARIES} ${OCTOMAP_LIBRARIES})
+ target_link_libraries(path_man ${catkin_LIBRARIES})
+ target_link_libraries(scan_plan ${catkin_LIBRARIES} octomap_man path_man rrt graph mapping_sensor ${OCTOMAP_LIBRARIES} ${DYNAMICEDT3D_LIBRARIES})
  target_link_libraries(scan_plan_node ${catkin_LIBRARIES} scan_plan)
 
 #############

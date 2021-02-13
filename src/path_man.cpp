@@ -23,7 +23,7 @@ std::pair<double, double> path_man::mean_heading_height(const Eigen::MatrixXd& p
   Eigen::Vector3d estDirVec(0.0, 0.0, 0.0);
   double avgHeight = 0.0;
 
-  int startIndx = std::max(0, path.rows() - nLastPts);
+  int startIndx = std::max(0, int(path.rows()) - nLastPts);
 
   for(int i=startIndx; i<(path.rows()-1); i++)
   {
@@ -34,7 +34,7 @@ std::pair<double, double> path_man::mean_heading_height(const Eigen::MatrixXd& p
   avgHeight += path(path.rows()-1, 2);
   avgHeight = avgHeight / double(path.rows());
 
-  return std::atan2(estDirVec(1), estDirVec(0));
+  return std::pair<double,double>( atan2(estDirVec(1), estDirVec(0)), avgHeight );
 }
 // ***************************************************************************
 void path_man::publish_path(const Eigen::MatrixXd& eigPath, std::string frameId, const ros::Publisher& pathPub)
@@ -74,8 +74,23 @@ std::pair<double, double> path_man::mean_heading_height_err(double yawIn, double
 
   return std::make_pair(yawErr, heightErr);
 }
+// ***************************************************************************
+double path_man::path_to_path_dist(const Eigen::MatrixXd& path1, const Eigen::MatrixXd& path2)
+{
+  // path1 : candidate path
+  // path2 : pose history path
+  double dist = 0;
+  for(int i=0; i<path1.rows(); i++)
+    dist += point_to_path_dist( Eigen::Vector3d(path1(i,0), path1(i,1), path1(i,2) ), path2 );
+
+  return ( dist / double(path1.rows()) ); // mean of minimum 1-norm distances
+}
 
 // ***************************************************************************
+double path_man::point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::MatrixXd& pathIn)
+{
+  return ( pathIn.rowwise() - ptIn.transpose() ).rowwise().lpNorm<1>().minCoeff(); // minimum 1-norm distance to a path
+}
 /*
 geometry_msgs::TransformStamped path_man::transform_msg(Eigen::Vector3d pos1, Eigen::Vector3d pos2, bool loc) 
 {

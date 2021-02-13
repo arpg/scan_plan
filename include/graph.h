@@ -10,6 +10,7 @@
 #include <forward_list>
 #include "disp.h"
 
+#include "octomap_man.h"
 #include "visualization_msgs/MarkerArray.h"
 #include "geometry_msgs/PoseArray.h"
 #include "ros/ros.h"
@@ -52,7 +53,6 @@ private:
 
   double radNear_;
   double radRob_; // robot radius
-  double sensRange_;
   double minVolGain_;
   
   octomap_man* octMan_;
@@ -68,7 +68,7 @@ private:
  
 public:
   ~graph();
-  graph(Eigen::Vector3d, double, double, double, double, std::string, octomap_man*);
+  graph(Eigen::Vector3d posRoot, double radNear, double radRob, double minVolGain, std::string frameId, octomap_man* octMan);
   
   bool add_vertex(const gvert);
   bool u_coll(const gvert, const gvert);  
@@ -79,6 +79,7 @@ public:
   double volumetric_gain(Eigen::Vector3d, octomap::OcTree*, double);
   int n_unseen_neighbors(octomap::OcTree*, octomap::OcTreeKey*);
   void update_frontiers_vol_gain();
+  bool add_path(Eigen::MatrixXd& path, bool containFrontier);
 };
 
 #endif

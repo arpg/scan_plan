@@ -29,10 +29,10 @@ rrt::rrt(int nNodes, const std::vector<double>& minBnds, const std::vector<doubl
 }
 
 // ***************************************************************************
-void rrt::set_bounds(double minBnds[3], double maxBnds[3])
+void rrt::set_bounds(const Eigen::Vector3d& minBnds, const Eigen::Vector3d& maxBnds)
 {
-  std::memcpy(minBnds_, minBnds, sizeof(double)*3);
-  std::memcpy(maxBnds_, maxBnds, sizeof(double)*3);
+  minBnds_[0] = minBnds(0); minBnds_[1] = minBnds(1); minBnds_[2] = minBnds(2);
+  maxBnds_[0] = maxBnds(0); maxBnds_[1] = maxBnds(1); maxBnds_[2] = maxBnds(2);
 }
 
 // ***************************************************************************
@@ -432,6 +432,12 @@ void rrt::publish_viz(ros::Publisher& vizPub, std::string frameId, std::vector<i
   vizMsg.markers.push_back(tree);
   
   vizPub.publish(vizMsg);
+}
+
+// ***************************************************************************
+double rrt::get_del_dist()
+{
+  return delDist_;
 }
 
 

@@ -12,7 +12,9 @@
 #include "tf2_ros/transform_listener.h"
 #include "geometry_msgs/PoseArray.h"
 #include "std_msgs/Float64.h"
-//#include "dynamicEDT3D/dynamicEDT3D.h"
+
+#include "path_man.h"
+
 
 // ***************************************************************************
 class scan_plan
@@ -21,7 +23,7 @@ class scan_plan
 private:
 
   ros::NodeHandle* nh_;
-  Eigen::MatrixXd posHist_(100,3); // initialize for 100 points. If the size increases, allocate memory for another 100 points and so on
+  Eigen::MatrixXd posHist_; // initialize for 100 points. If the size increases, allocate memory for another 100 points and so on
   int posHistSize_;
 
   ros::Subscriber octSub_;
@@ -42,7 +44,6 @@ private:
 
   rrt* rrtTree_;
   octomap_man* octMan_;
-  path_man* pathMan_;
   graph* graph_;
   std::vector<mapping_sensor> mapSensors_;
 
@@ -64,51 +65,33 @@ private:
   Eigen::Vector3d geoFenceMin_;
   Eigen::Vector3d geoFenceMax_;
 
+  Eigen::MatrixXd minCstPath_;
+
+  double pi_ = acos(-1);
+
 public:
   scan_plan(ros::NodeHandle*);
   ~scan_plan();
-
-
-  void build_tree(double*, double*, double);
-  void init_dist_map();
-
-  void octomap_cb(const octomap_msgs::Octomap&);
-  void timer_replan_cb(const ros::TimerEvent&);
-  void timer_ph_cam_cb(const ros::TimerEvent&);
-
-  void path_cost(Eigen::MatrixXd&);
-
-  void test_script();
-  void place_ph_cams();
 
   void setup_pose();
   void setup_sensors();
   void setup_rrt();
   void setup_graph();
   void setup_timers();
+  void setup_octomap();
   void setup_scan_plan();
-
   bool update_base_to_world();
-  geometry_msgs::TransformStamped transform_msg(Eigen::Vector3d pos1, Eigen::Vector3d pos2, bool loc=true);
-  geometry_msgs::Quaternion yaw_to_quat(double);
-  double quat_to_yaw(geometry_msgs::Quaternion);
-  double nearest(ph_cam, std::vector<ph_cam>&);
-  std::vector<ph_cam> path_ph_cams(Eigen::MatrixXd&, std::vector<geometry_msgs::TransformStamped>&);
-  double fov_dist(std::vector<ph_cam>& phCamsPath);
-  double heading_diff(double, std::vector<geometry_msgs::TransformStamped>&);
-
-  void publish_lookahead();
-  void publish_path();
-  Eigen::MatrixXd interpolate(Eigen::MatrixXd&, int);
-  void get_rrt_bounds(double (&rrtBnds)[2][3]);
-
-  double exploration_direction(double&);
-  double path_length(Eigen::MatrixXd& path);
-  double height_diff(double currHeight, Eigen::MatrixXd& path);
-
+  Eigen::Vector3d transform_to_eigen_pos(const geometry_msgs::TransformStamped& transformIn);
+  void timer_replan_cb(const ros::TimerEvent&);
+  bool add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int idLookaheadLeaf, graph* gph) ;
+  void octomap_cb(const octomap_msgs::Octomap& octmpMsg);
+  Eigen::Vector3d geofence_saturation(const Eigen::Vector3d& posIn);
+  void test_script();
+  double quat_to_yaw(geometry_msgs::Quaternion quat);
+  geometry_msgs::Quaternion yaw_to_quat(double yaw);
   bool min_path_len(Eigen::MatrixXd& path);
-  bool add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int idLookaheadLeaf, graph* gph);
-  bool add_path_to_graph(Eigen::MatrixXd& path, graph*, bool containFrontier);
+  void pose_hist_cb(const nav_msgs::Path& poseHistMsg);
+  
 };
 
 #endif
