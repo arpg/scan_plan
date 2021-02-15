@@ -2,7 +2,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-graph::graph(Eigen::Vector3d posRoot, double radNear, double radRob, double minVolGain, std::string frameId, octomap_man* octMan)
+graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan)
 {
   adjList_ = new BiDirectionalGraph;
 
@@ -15,6 +15,7 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radRob, double minV
 
   boost::add_vertex(vertRoot, *adjList_);
 
+  radNearest_ = radNearest;
   radNear_ = radNear;
   radRob_ = radRob;
   frameId_ = frameId;
@@ -256,7 +257,7 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
 
     vert.terrain = gvert::UNKNOWN;
 
-    std::cout << "Adding vertex" << std::endl;
+    //std::cout << "Adding vertex" << std::endl;
     success = add_vertex(vert);
   }
 

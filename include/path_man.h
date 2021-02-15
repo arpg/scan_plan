@@ -4,6 +4,7 @@
 #include "disp.h"
 #include "ros/ros.h"
 #include "nav_msgs/Path.h"
+#include "octomap_man.h"
 
 #include <eigen3/Eigen/Core>
 #include <math.h>
@@ -11,7 +12,16 @@
 // ***************************************************************************
 class path_man
 {
+private:
+  double minPathLen_;
+  octomap_man* octMan_;
+  
 public:
+  path_man(const double& minPathLen, octomap_man* octMan);
+  void validate_path(Eigen::MatrixXd& path);
+  bool path_len_check(const Eigen::MatrixXd& path);
+
+
   static double path_len(const Eigen::MatrixXd& path);
   static std::pair<double, double> mean_heading_height(const Eigen::MatrixXd& path, const int& nLastPts);
   static void publish_path(const Eigen::MatrixXd& eigPath, std::string frameId, const ros::Publisher& pathPub);

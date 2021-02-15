@@ -36,7 +36,7 @@ private:
  
 public:
   ~octomap_man();
-  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, const std::vector<mapping_sensor>& mapSensors);
+  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors);
 
   double volumetric_gain(const Eigen::Vector3d& basePos);
   bool u_coll(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);

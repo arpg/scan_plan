@@ -140,14 +140,14 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
       posRand = rand_pos(minBnds_, maxBnds_, posGoal);
     else
       posRand = rand_pos(minBnds_, maxBnds_);
-    //std::cout << "Drawn random node at position " << posRand.transpose() << std::endl;
+   // std::cout << "Drawn random node at position " << posRand.transpose() << std::endl;
 
     int idNearest = find_nearest(posRand);
     Eigen::Vector3d posNearest = posNds_.row(idNearest);
-    //std::cout << "Nearest node found at position " << posNearest.transpose() << std::endl;
+   // std::cout << "Nearest node found at position " << posNearest.transpose() << std::endl;
 
     Eigen::Vector3d posNew = steer(posNearest, posRand, delDist_);
-    //std::cout << "New node at position " << posNew.transpose() << std::endl;
+   // std::cout << "New node at position " << posNew.transpose() << std::endl;
 
     //getchar();
 
@@ -401,6 +401,10 @@ void rrt::publish_viz(ros::Publisher& vizPub, std::string frameId, std::vector<i
 	scale.y = 0.05;
 	scale.z = 0.05;
 	tree.scale = scale;
+  tree.color.r = 0;
+  tree.color.g = 0;
+  tree.color.b = 1.0;
+  tree.color.a = 1.0;
 
   std_msgs::ColorRGBA color;
 
@@ -414,7 +418,7 @@ void rrt::publish_viz(ros::Publisher& vizPub, std::string frameId, std::vector<i
       vertex.y = path(j,1);
       vertex.z = path(j,2);
 
-      color.r = 0; color.g = 0; color.b = 1; color.a = 1;
+      color.r = 0; color.g = 0; color.b = 1.0; color.a = 1.0;
       tree.colors.push_back(color);
 
       tree.points.push_back(vertex);
@@ -423,7 +427,7 @@ void rrt::publish_viz(ros::Publisher& vizPub, std::string frameId, std::vector<i
       vertex.z = path(j+1,2);
       tree.points.push_back(vertex);
 
-      color.r = 0; color.g = 0; color.b = 1; color.a = 1;
+      color.r = 0; color.g = 0; color.b = 1.0; color.a = 1.0;
       tree.colors.push_back(color);
     }
   }

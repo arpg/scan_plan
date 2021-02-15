@@ -12,6 +12,7 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   setup_pose();
   setup_sensors();
   setup_octomap();
+  setup_path();
   setup_rrt();
   setup_graph();
   setup_timers();
@@ -109,10 +110,11 @@ void scan_plan::setup_graph()
   // prereqs setup_pose, setup_octomap
 
   ROS_INFO("%s: Waiting for graph params ...", nh_->getNamespace().c_str());
-  double graphRadNear, minVolGain;
+  double graphRadNear, minVolGain, graphRadNearest;
   std::vector<double> homePos;
  
   while(!nh_->getParam("near_radius_graph", graphRadNear));
+  while(!nh_->getParam("nearest_radius_graph", graphRadNearest));
   while(!nh_->getParam("min_vol_gain_cubic_m", minVolGain)); // used for local/global switching and removing frontiers
   while(!nh_->getParam("home_position", homePos)); // must be collision-free
   
@@ -121,18 +123,18 @@ void scan_plan::setup_graph()
   homePos_(1) = homePos[1];
   homePos_(2) = homePos[2];
 
-  graph_ = new graph(homePos_, graphRadNear, radRob_, minVolGain, worldFrameId_, octMan_);
+  graph_ = new graph(homePos_, graphRadNear, graphRadNearest, radRob_, minVolGain, worldFrameId_, octMan_);
 }
 
 // ***************************************************************************
 void scan_plan::setup_timers()
 {
   ROS_INFO("%s: Waiting for timer params ...", nh_->getNamespace().c_str());
-  double timeIntReplan;
-  while(!nh_->getParam("time_interval_replan", timeIntReplan));
+
+  while(!nh_->getParam("time_interval_replan", timeIntReplan_));
 
   ROS_INFO("%s: Creating timers ...", nh_->getNamespace().c_str());
-  timerReplan_ = nh_->createTimer(ros::Duration(timeIntReplan), &scan_plan::timer_replan_cb, this);
+  timerReplan_ = nh_->createTimer(ros::Duration(timeIntReplan_), &scan_plan::timer_replan_cb, this);
 }
 
 // ***************************************************************************
@@ -142,7 +144,7 @@ void scan_plan::setup_octomap()
   ROS_INFO("%s: Waiting for octomap params ...", nh_->getNamespace().c_str());
 
   std::string vehicleType;
-  double maxGroundRoughness, maxGroundStep, maxDistEsdf;
+  double maxGroundRoughness, maxGroundStep, maxDistEsdf, groundPlaneSearchDist;
   bool esdfUnknownAsOccupied;
 
   while(!nh_->getParam("esdf_max_dist", maxDistEsdf));
@@ -151,9 +153,23 @@ void scan_plan::setup_octomap()
   while(!nh_->getParam("robot_radius", radRob_));
   while(!nh_->getParam("max_ground_roughness", maxGroundRoughness)); // [0, 180], angle from postive z
   while(!nh_->getParam("max_ground_step", maxGroundStep)); // [epsilon,inf]
+  while(!nh_->getParam("ground_plane_search_distance", groundPlaneSearchDist));
 
   ROS_INFO("%s: Setting up octomap manager ...", nh_->getNamespace().c_str());
-  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, vehicleType, radRob_, maxGroundRoughness*(pi_/180), maxGroundStep, mapSensors_);
+  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, vehicleType, radRob_, maxGroundRoughness*(pi_/180), maxGroundStep, groundPlaneSearchDist, mapSensors_);
+}
+
+// ***************************************************************************
+void scan_plan::setup_path()
+{
+  // prereqs setup_octomap
+  ROS_INFO("%s: Waiting for path manager params ...", nh_->getNamespace().c_str());
+
+  double minPathLen;
+  while(!nh_->getParam("admissible_min_path_length", minPathLen));
+
+  ROS_INFO("%s: Setting up path manager ...", nh_->getNamespace().c_str());
+  pathMan_ = new path_man(minPathLen, octMan_);
 }
 
 // ***************************************************************************
@@ -207,14 +223,12 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
     return;
 
   ros::Time timeS = ros::Time::now();
-    disp(0, "Here");
+
   update_base_to_world();
-  disp(0, "Here");
+
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
-  disp(0, "Here");
 
   rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
-  disp(0, "Here");
   rrtTree_->build(robPos);
 
   std::vector<int> idLeaves = rrtTree_->get_leaves();
@@ -223,7 +237,6 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   // get all paths ending at leaves and choose one with min cost
   double currRobYaw = quat_to_yaw(baseToWorld_.transform.rotation);
   std::pair<double, double> currExpYawHeight = path_man::mean_heading_height(posHist_.topRows(posHistSize_), nHistPosesExpDir_); ////////
-  disp(0, "Here");
 
   int idPathLeaf = -1;
 
@@ -238,12 +251,20 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
                    + cGain_[1] * std::get<0>(pathYawHeightErr) // distance between the pose history and candidate path headings
                    + cGain_[2] * std::get<1>(pathYawHeightErr); // distance between the pose history and candidate path heights
 
-    if( minCst > pathCst && min_path_len(path) ) // minimum path length condition
+    if( minCst > pathCst && pathMan_->path_len_check(path) ) // minimum path length condition
     {
       minCst = pathCst;
       minCstPath_ = path;
       idPathLeaf = idLeaves[i];
     }
+  }
+
+  if( idPathLeaf == -1 ) // if no admissible path is found
+    timerReplan_.setPeriod(ros::Duration(1.0), false);
+  else
+  {
+    timerReplan_.setPeriod(ros::Duration(timeIntReplan_), false); // don't reset timer
+    //std::cout << "Path length of the min cost path: " << path_man::path_len(minCstPath_) << std::endl;
   }
 
   std::cout << "Adding paths to the graph" << std::endl;
@@ -261,7 +282,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 
   //TODO: Consider including a check, update path if end-of-path is reached, and increase the replan time
 
-  graph_->update_frontiers_vol_gain();
+  ///graph_->update_frontiers_vol_gain();
    
   ros::Duration timeE = ros::Time::now() - timeS;
 
@@ -273,7 +294,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 
   std::cout << "Publishing visualizations" << std::endl;
   graph_->publish_viz(vizPub_);
-  //rrtTree_->publish_viz(vizPub_,worldFrameId_,idLeaves);
+  rrtTree_->publish_viz(vizPub_,worldFrameId_,idLeaves);
 
   std_msgs::Float64 computeTimeMsg;
   computeTimeMsg.data = timeE.toSec();
@@ -305,16 +326,14 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
     }
 
     path = tree->get_path(idLeaves[nCurrGraphPaths]);
-    if( !min_path_len(path) )
+    if( !pathMan_->path_len_check(path) )
     {
       nCurrGraphPaths++;
       continue;
     }
 
-    std::cout << "HERE" << std::endl;
     if( gph->add_path(path, true) )
       success = true;
-    std::cout << "HERE2" << std::endl;
     nCurrGraphPaths++;
   }
 
@@ -342,6 +361,12 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 
   octMan_->update_esdf(localBndsMin_+robPos, localBndsMax_+robPos);
   octMan_->update_robot_pos(robPos);
+
+  std::cout << "Validating path" << std::endl;
+  pathMan_->validate_path(minCstPath_);
+
+  std::cout << "Publishing validated path" << std::endl;
+  pathMan_->publish_path(minCstPath_, worldFrameId_, pathPub_);
 
   if( (isInitialized_ & 0x01) != 0x01 )
     isInitialized_ = isInitialized_ | 0x01;
@@ -409,17 +434,13 @@ geometry_msgs::Quaternion scan_plan::yaw_to_quat(double yaw)
 }
 
 // ***************************************************************************
-bool scan_plan::min_path_len(Eigen::MatrixXd& path)
-{
-  double pathLength = path_man::path_len(path);
-  return (pathLength > (radRob_+0.01)) && (pathLength > (rrtTree_->get_del_dist()+0.01));
-}
-
-// ***************************************************************************
 void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
 {
   if(poseHistMsg.poses.size() > posHist_.size())
+  {
+    ROS_INFO("Resizing pose history array");
     posHist_.conservativeResize(poseHistMsg.poses.size()+100, 3);
+  }
 
   for(int i=0; i<poseHistMsg.poses.size(); i++)
   {

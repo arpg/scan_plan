@@ -2,30 +2,33 @@ base_frame_id: A01/base_link
 world_frame_id: world
 
 sensor_fovs_horz_vert_degrees: [360, 45] # append [horz,vert] for more sensors
-sensor_res_horz_vert_pts: [360, 64]
+sensor_res_horz_vert_pts: [36, 10]
 sensor_ranges: [10]
 sensor_frame_ids: [A01/base_link/front_laser]
 
 min_bounds_local: [-10, -10, -3.0] # used for local path planning
 max_bounds_local: [10, 10, 3.0]
-n_rrt_nodes: 600
+n_rrt_nodes: 100
 near_radius_rrt: 2.0
 delta_distance_rrt: 1.0
 n_fail_iterations_rrt: 1000
 
+nearest_radius_graph: 1.0
 near_radius_graph: 5.0 # 2 times delta_distance_rrt
-min_vol_gain_cubic_m: 50 # calculate wisely
+min_vol_gain_cubic_m: 5 # calculate wisely
 home_position: [4, 0, 1.5] # should be collision-free
 
 time_interval_replan: 5.0
 
 esdf_max_dist: 5.0 # greater than robot radius
-esdf_unknown_as_occupied: true
+esdf_unknown_as_occupied: false
 vehicle_type: air
-robot_radius: 1.0
-max_ground_roughness: 30 # angle from positive z (radians)
-max_ground_step: 0.5 # greater than octomap resolution
+robot_radius: 0.75
+max_ground_roughness: 60 # angle from positive z (radians)
+max_ground_step: 0.85 # greater than octomap resolution
+ground_plane_search_distance: 1.0
 
+admissible_min_path_length: 5
 c_gain: [2.2, 0.8, 1.0, 0.1]
 min_bnds_geofence: [3.5, -100000, -100000]
 max_bnds_geofence: [100000, 100000, 100000]

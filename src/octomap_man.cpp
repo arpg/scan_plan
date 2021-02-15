@@ -1,7 +1,7 @@
 #include "octomap_man.h"
 
 // ***************************************************************************
-octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, const std::vector<mapping_sensor>& mapSensors)
+octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors)
 {
   maxDistEsdf_ = maxDistEsdf;
   esdfUnknownAsOccupied_ = esdfUnknownAsOccupied;
@@ -9,6 +9,7 @@ octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::st
   radRob_ = radRob;
   maxGroundRoughness_ = maxGroundRoughness;
   maxGroundStep_ = maxGroundStep;
+  groundPlaneSearchDist_ = groundPlaneSearchDist;
 
   mapSensors_ = mapSensors;
 
@@ -17,9 +18,14 @@ octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::st
 // ***************************************************************************
 double octomap_man::volumetric_gain(const Eigen::Vector3d& basePos)
 {
+  std::cout << "Calculating volumetric gain at : " << basePos.transpose() <<std::endl;
+  std::cout << "Number of sensors : " << mapSensors_.size() <<std::endl;
+
   double volGain = 0;
   for(int i=0; i<mapSensors_.size(); i++)
     volGain += mapSensors_[i].volumetric_gain(octTree_, basePos);
+
+  std::cout << "Volumetric gain of all sensors : " << volGain <<std::endl;
   return volGain;
 }
 
@@ -50,7 +56,10 @@ bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector
     if ( u_coll(pos, groundRoughness, groundPt) )
       return true;
     if ( abs(groundPt(2) - lastGroundPt(2)) > maxGroundStep_ )
+    {
+      std::cout << "Large ground step" << abs(groundPt(2) - lastGroundPt(2)) << std::endl;
       return true;
+    }
 
     lastGroundPt = groundPt;
 
@@ -63,8 +72,10 @@ bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector
 // ***************************************************************************
 bool octomap_man::u_coll_air(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
 {
-  const double delLambda = octTree_->getResolution() / (pos2 - pos1).norm();
+  //const double delLambda = octTree_->getResolution() / (pos2 - pos1).norm();
+  const double delLambda = radRob_ / (2*(pos2 - pos1).norm());
 
+  //std::cout << "Delta lambda for u_coll: " << delLambda << std::endl;
   double lambda = 0;
   Eigen::Vector3d pos;
   while(lambda <= 1)
@@ -117,14 +128,17 @@ bool octomap_man::u_coll_air(const Eigen::Vector3d& pos)
 // ***************************************************************************
 bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos, double& roughness, Eigen::Vector3d& groundPt) 
 {
+  //return false;
   // projects the robot's shadow image (square) to ground and checks for feasibility/collision/terrain
 
   //Eigen::MatrixXd surfCoords = surfCoordsBase_ + pos.transpose();
 
+  //std::cout << "Checking for collision: " << pos.transpose() << std::endl;
+
   if( surfCoordsBase_.rows() < 1 ) // if the robot is represented by no surface shadow, then it's collision-free
     return false;
 
-  const double successfulProjectionsPercent = 0.75;  // if projections success is smaller, it's a cliff or severe decline so return false in that case
+  const double successfulProjectionsPercent = 0.10;  // if projections success is smaller, it's a cliff or severe decline so return false in that case
   int successfulProjections = 0;
 
   roughness = 0;
@@ -136,23 +150,34 @@ bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos, double& roughness, E
   const int groundPtIndx = ceil(double(surfCoordsBase_.rows())/2) - 1; // select the mid point of the shadow projection as the groundPoint
   for(int i=0; i<surfCoordsBase_.rows(); i++)
   {
+    //std::cout << "Projecting to ground: " << (surfCoordsBase_.row(i).transpose() + pos).transpose() << std::endl;
     if( !project_point_to_ground( surfCoordsBase_.row(i).transpose() + pos, currRoughness, currGroundPt ) ) // translate robot shadow point to pos and project
       continue;
+    //std::cout << "Successfully projected roughness: " << roughness << std::endl;
     roughness += currRoughness;
     successfulProjections++;
 
-    if(i==groundPtIndx)
-      groundPt = currGroundPt;
+    //std::cout << "Setting ground point:  " << groundPt.transpose() << std::endl;
+    groundPt = currGroundPt;
   }
 
   if( double(successfulProjections) / double(surfCoordsBase_.rows()) < successfulProjectionsPercent )
+  {
+    std::cout << "Not enough projections " << double(successfulProjections) / double(surfCoordsBase_.rows()) << std::endl;
     return true;
-
-  roughness = roughness / double(successfulProjections);
-  groundPt = groundPt / double(successfulProjections);
+  }
+  else
+  {
+    //std::cout << "Here" << std::endl;
+    roughness /= double(successfulProjections);
+    groundPt /= double(successfulProjections);
+  }
 
   if( roughness > maxGroundRoughness_ )
+  {
+    std::cout << "Ground is rough" << std::endl;
     return true;
+  }
 
   return false;
 }
@@ -163,37 +188,62 @@ bool octomap_man::project_point_to_ground(const Eigen::Vector3d& pos, double& ro
   // returns if a ground is found (true) or not (false), alongwith ground roughness and point
 
   octomap::OcTreeKey currKey = octTree_->coordToKey (pos(0), pos(1), pos(2)); // initialize key at current robot position
+  octomap::OcTreeNode* currNode = octTree_->search(currKey);
 
-  if (octTree_->search(currKey)->getLogOdds() > 0) // if the pos to project is occupied, cannot project to ground
-    return false;
+  if (currNode != NULL)
+  {
+    if (currNode->getLogOdds() > 0) // if the pos to project is occupied, cannot project to ground
+    {
+      //std::cout << "First voxel is occupied" << std::endl;
+      roughness = 0;
+      groundPt = Eigen::Vector3d(0,0,0);
+      return false;
+    }
+  }
+  
+  //std::cout << "Ground plane search distance: " << groundPlaneSearchDist_ << std::endl;
+ // std::cout << "First voxel is free going down " << ceil(groundPlaneSearchDist_/octTree_->getResolution()) << " voxels" << std::endl;
 
   for(int i=0; i < ceil(groundPlaneSearchDist_/octTree_->getResolution()); i++ ) // until the search distance is over
   {
-    currKey.k[2]++;
-    octomap::OcTreeNode* currNode = octTree_->search(currKey);
+    currKey.k[2]--;
+    currNode = octTree_->search(currKey);
+
+    //std::cout << "Checking key at coord: " << (octTree_->keyToCoord(currKey)).x() << ", " << (octTree_->keyToCoord(currKey)).y() << ", " << (octTree_->keyToCoord(currKey)).z() << std::endl;
+
     if (currNode == NULL) // if unknown
-      continue;
+    {
+      roughness = 0;
+      groundPt = Eigen::Vector3d(0,0,0);
+      return false;
+    }
     if (currNode->getLogOdds() < 0) // if free
       continue;
 
+    //std::cout << "Occupied key is here" << std::endl;
     // if an occupied cell is found, it is ground, now calculate the roughness and return the point
     octomap::point3d groundPtOct = octTree_->keyToCoord(currKey);
     groundPt(0) = groundPtOct.x();
     groundPt(1) = groundPtOct.y();
     groundPt(2) = groundPtOct.z();
 
+    //std::cout << "Computing surface normals" << std::endl;
     std::vector<octomap::point3d> surfNormals;
-    if ( octTree_->getNormals (groundPtOct, surfNormals, true) ) // treat unknown as occupied, it should never encounter an unknown cell
-      roughness = surfNormals[0].angleTo( octomap::point3d(0,0,1) ); // TODO: merge in other surfNormals than just 0
+    bool surfNormalSuccess = true; //octTree_->getNormals (groundPtOct, surfNormals, true);
+
+    if ( surfNormalSuccess && surfNormals.size() > 0 ) // treat unknown as occupied, it should never encounter an unknown cell
+      roughness = 0; //surfNormals[0].angleTo( octomap::point3d(0,0,1) ); // TODO: merge in other surfNormals than just 0
     else
     {
       // for debugging, to observe the reliability of the function
-      ROS_WARN("Surface normal not available, assuming (0,0,1)");
+      //ROS_WARN("Surface normal not available, assuming (0,0,1)");
       roughness = 0;
     }
     return true;
   }
 
+  roughness = 0;
+  groundPt = Eigen::Vector3d(0,0,0);
   return false;
 }
 
@@ -217,6 +267,12 @@ void octomap_man::update_esdf(const Eigen::Vector3d& minBnds, const Eigen::Vecto
   bool unknownAsOccupied = esdfUnknownAsOccupied_; // true
 
   float maxDist = maxDistEsdf_; // 5.0
+
+  //std::cout << "Updating esdf ..." << std::endl;
+  //std::cout << "Min Bounds: " << min.x() << ", " <<  min.y() << ", " <<  min.z() << std::endl;
+  //std::cout << "Max Bounds: " << max.x() << ", " <<  max.y() << ", " <<  max.z() << std::endl;
+  //std::cout << "Max Dist: " << maxDist << std::endl;
+  //std::cout << "Unknown as occupied: " << unknownAsOccupied << std::endl;
 
   delete octDist_;
   octDist_ = new DynamicEDTOctomap(maxDist, octTree_, min, max, unknownAsOccupied);

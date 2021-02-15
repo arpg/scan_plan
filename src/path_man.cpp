@@ -1,6 +1,13 @@
 #include "path_man.h"
 
 // ***************************************************************************
+path_man::path_man(const double& minPathLen, octomap_man* octMan)
+{
+  minPathLen_ = minPathLen;
+  octMan_ = octMan;
+}
+
+// ***************************************************************************
 double path_man::path_len(const Eigen::MatrixXd& path) // TODO: use eigen functions instead of for loop
 {
   if(path.rows() < 2)
@@ -91,6 +98,46 @@ double path_man::point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::Ma
 {
   return ( pathIn.rowwise() - ptIn.transpose() ).rowwise().lpNorm<1>().minCoeff(); // minimum 1-norm distance to a path
 }
+
+// ***************************************************************************
+void path_man::validate_path(Eigen::MatrixXd& path)
+{
+  if(path.rows() < 2) // no path with one point is valid
+  {
+    path.conservativeResize(0, Eigen::NoChange);
+    return;
+  }
+
+  for (int i=0; i<(path.rows()-1); i++) // collision check for each segment
+  {
+    if( !octMan_->u_coll(path.row(i), path.row(i+1)) )
+      continue;
+
+    if(i == 0)
+    {
+      path.conservativeResize(0 , Eigen::NoChange);
+      break;
+    }
+    else
+    {
+      path.conservativeResize(i+1 , Eigen::NoChange);
+      break;
+    }
+  }
+
+  if( !path_len_check(path) )
+    path.conservativeResize(0, Eigen::NoChange);
+}
+
+// ***************************************************************************
+bool path_man::path_len_check(const Eigen::MatrixXd& path)
+{
+  //double pathLength = path_man::path_len(path);
+  return (path_len(path) > minPathLen_);
+}
+
+// ***************************************************************************
+
 /*
 geometry_msgs::TransformStamped path_man::transform_msg(Eigen::Vector3d pos1, Eigen::Vector3d pos2, bool loc) 
 {

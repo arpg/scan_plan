@@ -46,12 +46,14 @@ private:
   octomap_man* octMan_;
   graph* graph_;
   std::vector<mapping_sensor> mapSensors_;
+  path_man* pathMan_;
 
   uint8_t isInitialized_;
 
   double radRob_; // max dist to obs to declare collision
 
   ros::Timer timerReplan_;
+  double timeIntReplan_;
 
   std::vector<double> cGain_;
 
@@ -79,6 +81,7 @@ public:
   void setup_graph();
   void setup_timers();
   void setup_octomap();
+  void setup_path();
   void setup_scan_plan();
   bool update_base_to_world();
   Eigen::Vector3d transform_to_eigen_pos(const geometry_msgs::TransformStamped& transformIn);

@@ -52,6 +52,7 @@ private:
   double maxBnds_[3];
 
   double radNear_;
+  double radNearest_;
   double radRob_; // robot radius
   double minVolGain_;
   
@@ -68,7 +69,7 @@ private:
  
 public:
   ~graph();
-  graph(Eigen::Vector3d posRoot, double radNear, double radRob, double minVolGain, std::string frameId, octomap_man* octMan);
+  graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan);
   
   bool add_vertex(const gvert);
   bool u_coll(const gvert, const gvert);  
