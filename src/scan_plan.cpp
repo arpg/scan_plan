@@ -22,6 +22,7 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
 
   octSub_ = nh->subscribe("octomap_in", 1, &scan_plan::octomap_cb, this);
   poseHistSub_ = nh->subscribe("pose_hist_in", 1, &scan_plan::pose_hist_cb, this);
+  goalSub_ = nh->subscribe("goal_in", 1, &scan_plan::goal_cb, this);
 
   pathPub_ = nh->advertise<nav_msgs::Path>("path_out", 10);
   compTimePub_ = nh->advertise<std_msgs::Float64>("compute_time_out", 10);
@@ -224,57 +225,21 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 
   ros::Time timeS = ros::Time::now();
 
-  update_base_to_world();
+  std::vector<int> idLeaves;
+  int idPathLeaf;
+  Eigen::MatrixXd minCstPath = generate_local_exp_path(idLeaves, idPathLeaf);
 
-  Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
-
-  rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
-  rrtTree_->build(robPos);
-
-  std::vector<int> idLeaves = rrtTree_->get_leaves();
-  disp(idLeaves.size(), "Number of paths found");
-
-  // get all paths ending at leaves and choose one with min cost
-  double currRobYaw = quat_to_yaw(baseToWorld_.transform.rotation);
-  std::pair<double, double> currExpYawHeight = path_man::mean_heading_height(posHist_.topRows(posHistSize_), nHistPosesExpDir_); ////////
-
-  int idPathLeaf = -1;
-
-  double minCst = 10000;
-  
-  for(int i=0; i<idLeaves.size(); i++)
-  {
-    Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
-
-    std::pair<double, double> pathYawHeightErr = path_man::mean_heading_height_err(std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), path);
-    double pathCst = cGain_[0] * exp( -1 * path_man::path_to_path_dist(path,posHist_.topRows(posHistSize_)) ) // distance between candidate path and pose history path
-                   + cGain_[1] * std::get<0>(pathYawHeightErr) // distance between the pose history and candidate path headings
-                   + cGain_[2] * std::get<1>(pathYawHeightErr); // distance between the pose history and candidate path heights
-
-    if( minCst > pathCst && pathMan_->path_len_check(path) ) // minimum path length condition
-    {
-      minCst = pathCst;
-      minCstPath_ = path;
-      idPathLeaf = idLeaves[i];
-    }
-  }
-
-  if( idPathLeaf == -1 ) // if no admissible path is found
-    timerReplan_.setPeriod(ros::Duration(1.0), false);
+  if( minCstPath.rows() < 2 ) // if no admissible path is found
+    timerReplan_.setPeriod(ros::Duration(1.0), false); // compute path at a faster rate
   else
   {
+    std::cout << "Adding paths to the graph" << std::endl;
     timerReplan_.setPeriod(ros::Duration(timeIntReplan_), false); // don't reset timer
-    //std::cout << "Path length of the min cost path: " << path_man::path_len(minCstPath_) << std::endl;
-  }
-
-  std::cout << "Adding paths to the graph" << std::endl;
-  // assuming if a path is found that can be followed i.e, lowest cost and having atleast minimum path length
-  if( idPathLeaf > -1 ) 
-  {
     bool success = add_paths_to_graph(rrtTree_, idLeaves, idPathLeaf, graph_);
     if(!success)
       ROS_WARN("%s: Graph connection unsuccessful", nh_->getNamespace().c_str());
   }
+
   //TODO: Generate graph diconnect warning if no path is successfully added to the graph
   // Only add node to the graph if there is no existing node closer than radRob in graph lib, return success in that case since the graph is likely to be connected fine
   // update older node if within robot radius with updated terrain and collision information, the latter may mean taking nodes out of the graph
@@ -301,6 +266,109 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   compTimePub_.publish(computeTimeMsg);
   
   std::cout << "Replan Compute Time = " << computeTimeMsg.data << " sec" << std::endl;
+}
+// ***************************************************************************
+scan_plan::MODE scan_plan::next_mode()
+{
+}
+
+// ***************************************************************************
+Eigen::MatrixXd scan_plan::plan_from_graph(const Eigen::Vector3d& toPos, VertexDescriptor& fromVertex)
+{
+  // returns a path and the graph vertex start point
+  return ( plan_to_graph(toPos, fromVertex) ).rowwise().reverse(); // plan from the goal point to graph, then flip the path 
+}
+
+// ***************************************************************************
+Eigen::MatrixXd scan_plan::plan_to_graph(const Eigen::Vector3d& fromPos, VertexDescriptor& toVertex)
+{
+  // returns a path and the graph vertex end point
+ 
+  std::vector<VertexDescriptor> vertices = graph_->find_vertices_inside_box(localBndsMin_+fromPos, localBndsMax_+fromPos);
+  if(vertices.size() < 1)
+  {
+    ROS_WARN("%s: Not enough nearby graph vertices to connect", nh_->getNamespace().c_str());
+    return Eigen::MatrixXd(0,0);
+  }
+
+  std::cout << "Connecting to graph via a straight line" << std::endl;
+  for(int i=0; i<vertices.size(); i++)
+  {
+    toVertex = vertices[i];
+    Eigen::Vector3d vertexPos = graph_->get_pos(toVertex);
+
+    if( octMan_->u_coll( fromPos, vertexPos) )
+      continue;
+
+    Eigen::MatrixXd path(2,3);
+    path.row(0) = fromPos.transpose();
+    path.row(1) = vertexPos.transpose();
+    return path;
+  }
+
+  std::cout << "Connecting to graph via an rrt path" << std::endl;
+  for(int i=0; i<vertices.size(); i++)
+  {
+    toVertex = vertices[i];
+    Eigen::Vector3d vertexPos = graph_->get_pos(toVertex);
+
+    int leafId = rrtTree_->build(fromPos, vertexPos); // using goal-bias rrt to find a path 
+
+    if( leafId < 1 ) // if root node is returned / if a path is not found
+      continue;
+
+    Eigen::MatrixXd path = rrtTree_->get_path(leafId);
+    return path;
+  }
+
+  std::cout << "Giving up" << std::endl;
+  return Eigen::MatrixXd(0,0);
+}
+
+// ***************************************************************************
+Eigen::MatrixXd scan_plan::generate_local_exp_path(std::vector<int>& idLeaves, int& idPathLeaf) 
+{
+  // returns rrt lookahead path, ids of all leaves and of the lookahead path leaf
+  // get_path function in rrt can be used to get paths for a leaf id
+
+  Eigen::MatrixXd minCstPath(0,0);
+
+  update_base_to_world();
+
+  Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
+
+  rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
+  rrtTree_->build(robPos);
+
+  idLeaves = rrtTree_->get_leaves();
+  disp(idLeaves.size(), "Number of paths found");
+
+  // get all paths ending at leaves and choose one with min cost
+  double currRobYaw = quat_to_yaw(baseToWorld_.transform.rotation);
+  std::pair<double, double> currExpYawHeight = path_man::mean_heading_height(posHist_.topRows(posHistSize_), nHistPosesExpDir_); ////////
+
+  idPathLeaf = -1;
+
+  double minCst = 100000;
+  
+  for(int i=0; i<idLeaves.size(); i++)
+  {
+    Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
+
+    std::pair<double, double> pathYawHeightErr = path_man::mean_heading_height_err(std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), path);
+    double pathCst = cGain_[0] * exp( -1 * path_man::path_to_path_dist(path,posHist_.topRows(posHistSize_)) ) // distance between candidate path and pose history path
+                   + cGain_[1] * std::get<0>(pathYawHeightErr) // distance between the pose history and candidate path headings
+                   + cGain_[2] * std::get<1>(pathYawHeightErr); // distance between the pose history and candidate path heights
+
+    if( minCst > pathCst && pathMan_->path_len_check(path) ) // minimum path length condition
+    {
+      minCst = pathCst;
+      minCstPath = path;
+      idPathLeaf = idLeaves[i];
+    }
+  }
+
+  return minCstPath;
 }
 
 // ***************************************************************************
@@ -348,6 +416,11 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
 }
 
 // ***************************************************************************
+void scan_plan::goal_cb(const geometry_msgs::PointStamped& goalMsg)
+{
+}
+
+// ***************************************************************************
 void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 {
   //delete octTree_;
@@ -363,13 +436,16 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   octMan_->update_robot_pos(robPos);
 
   std::cout << "Validating path" << std::endl;
-  pathMan_->validate_path(minCstPath_);
+  changeDetected_ = !( pathMan_->validate_path(minCstPath_) );
 
   std::cout << "Publishing validated path" << std::endl;
   pathMan_->publish_path(minCstPath_, worldFrameId_, pathPub_);
 
   if( (isInitialized_ & 0x01) != 0x01 )
+  {
+    changeDetected_ = false;
     isInitialized_ = isInitialized_ | 0x01;
+  }
 }
 
 // ***************************************************************************

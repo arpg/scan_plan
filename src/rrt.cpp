@@ -274,7 +274,7 @@ Eigen::Vector3d rrt::rand_pos(double* min, double* max)
 int rrt::find_nearest(Eigen::Vector3d posRand)
 {
   Eigen::Index minIndx;
-  ( posNds_.topRows(actNds_).rowwise() - posRand.transpose() ).rowwise().squaredNorm().minCoeff(&minIndx);
+  ( posNds_.topRows(actNds_).rowwise() - posRand.transpose() ).rowwise().norm().minCoeff(&minIndx);
 
   return minIndx;
 }

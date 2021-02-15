@@ -77,10 +77,13 @@ public:
   void publish_frontiers(ros::Publisher&);
   void update_octomap(DynamicEDTOctomap*, octomap::OcTree*);
 
+  std::vector<VertexDescriptor> find_vertices_inside_box(const Eigen::Vector3d&, const Eigen::Vector3d&);
+
   double volumetric_gain(Eigen::Vector3d, octomap::OcTree*, double);
   int n_unseen_neighbors(octomap::OcTree*, octomap::OcTreeKey*);
   void update_frontiers_vol_gain();
   bool add_path(Eigen::MatrixXd& path, bool containFrontier);
+  Eigen::Vector3d get_pos(const VertexDescriptor&);
 };
 
 #endif

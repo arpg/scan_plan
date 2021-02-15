@@ -38,6 +38,8 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double 
 // ***************************************************************************
 bool graph::add_vertex(const gvert vertIn)
 {
+
+  // TODO: Consider using manhattan distance as the edge cost to speed up 
   bool success = false;
   bool vertexPresent = false;
   VertexDescriptor vertInDesc;
@@ -56,13 +58,13 @@ bool graph::add_vertex(const gvert vertIn)
     {
       //std::cout << "Help0" << std::endl;
       vertInDesc = boost::add_vertex(vertIn, *adjList_);
-      boost::add_edge( vertInDesc, *it, dist, *adjList_ ); //vertIn is added if not already present
+      boost::add_edge( vertInDesc, *it, sqrt(dist), *adjList_ ); //vertIn is added if not already present
       success = true;
       vertexPresent = true;
       //std::cout << "Help1" << std::endl;
     }
     else if( !u_coll(vertIn, (*adjList_)[*it]) && vertexPresent )
-      boost::add_edge( vertInDesc, *it, dist, *adjList_ );
+      boost::add_edge( vertInDesc, *it, sqrt(dist), *adjList_ );
 
     //std::cout << "Help2" << std::endl;
   }
@@ -262,6 +264,33 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
   }
 
   return success;
+}
+
+// ***************************************************************************
+std::vector<VertexDescriptor> graph::find_vertices_inside_box(const Eigen::Vector3d& minBnds, const Eigen::Vector3d& maxBnds)
+{
+  std::vector<VertexDescriptor> vertsInBox;
+
+  std::pair<VertexIterator, VertexIterator> vertItr = vertices(*adjList_);
+  for(VertexIterator it=vertItr.first; it!=vertItr.second; ++it)
+  {
+    Eigen::Vector3d pos = (*adjList_)[*it].pos;
+    if(pos(0) < minBnds(0) || pos(0) > maxBnds(0))
+      continue;
+    if(pos(1) < minBnds(1) || pos(1) > maxBnds(1))
+      continue;
+    if(pos(2) < minBnds(2) || pos(2) > maxBnds(2))
+      continue;
+
+    vertsInBox.push_back(*it);
+  }
+  return vertsInBox;
+}
+
+// ***************************************************************************
+Eigen::Vector3d graph::get_pos(const VertexDescriptor& vertexD)
+{
+  return (*adjList_)[vertexD].pos;
 }
 
 // ***************************************************************************

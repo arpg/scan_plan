@@ -11,6 +11,7 @@
 #include "dynamicEDT3D/dynamicEDTOctomap.h"
 #include "tf2_ros/transform_listener.h"
 #include "geometry_msgs/PoseArray.h"
+#include "geometry_msgs/PointStamped.h"
 #include "std_msgs/Float64.h"
 
 #include "path_man.h"
@@ -28,6 +29,7 @@ private:
 
   ros::Subscriber octSub_;
   ros::Subscriber poseHistSub_;
+  ros::Subscriber goalSub_;
 
   ros::Publisher pathPub_;
   ros::Publisher compTimePub_;
@@ -71,7 +73,12 @@ private:
 
   double pi_ = acos(-1);
 
+  bool changeDetected_;
+  //double monitorTimeModeSwitch_;
+
 public:
+  enum MODE {LOCALEXP, GLOBALEXP, RETURN, REPORT, GOAL};
+
   scan_plan(ros::NodeHandle*);
   ~scan_plan();
 
@@ -86,6 +93,7 @@ public:
   bool update_base_to_world();
   Eigen::Vector3d transform_to_eigen_pos(const geometry_msgs::TransformStamped& transformIn);
   void timer_replan_cb(const ros::TimerEvent&);
+  void goal_cb(const geometry_msgs::PointStamped&);
   bool add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int idLookaheadLeaf, graph* gph) ;
   void octomap_cb(const octomap_msgs::Octomap& octmpMsg);
   Eigen::Vector3d geofence_saturation(const Eigen::Vector3d& posIn);
@@ -94,6 +102,11 @@ public:
   geometry_msgs::Quaternion yaw_to_quat(double yaw);
   bool min_path_len(Eigen::MatrixXd& path);
   void pose_hist_cb(const nav_msgs::Path& poseHistMsg);
+
+  Eigen::MatrixXd generate_local_exp_path(std::vector<int>& idLeaves, int& idPathLeaf);
+  scan_plan::MODE next_mode();
+  Eigen::MatrixXd plan_to_graph(const Eigen::Vector3d& fromPos, VertexDescriptor& toVertex);
+  Eigen::MatrixXd plan_from_graph(const Eigen::Vector3d& toPos, VertexDescriptor& fromVertex);
   
 };
 

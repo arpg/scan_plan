@@ -18,7 +18,7 @@ private:
   
 public:
   path_man(const double& minPathLen, octomap_man* octMan);
-  void validate_path(Eigen::MatrixXd& path);
+  bool validate_path(Eigen::MatrixXd& path);
   bool path_len_check(const Eigen::MatrixXd& path);
 
 

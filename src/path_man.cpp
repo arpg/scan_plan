@@ -100,13 +100,17 @@ double path_man::point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::Ma
 }
 
 // ***************************************************************************
-void path_man::validate_path(Eigen::MatrixXd& path)
+bool path_man::validate_path(Eigen::MatrixXd& path)
 {
+  // returns false if path length changes, and the modified path
+
   if(path.rows() < 2) // no path with one point is valid
   {
     path.conservativeResize(0, Eigen::NoChange);
-    return;
+    return true;
   }
+
+  int pathInSz = path.rows();
 
   for (int i=0; i<(path.rows()-1); i++) // collision check for each segment
   {
@@ -127,6 +131,8 @@ void path_man::validate_path(Eigen::MatrixXd& path)
 
   if( !path_len_check(path) )
     path.conservativeResize(0, Eigen::NoChange);
+
+  return ( pathInSz == path.rows() );
 }
 
 // ***************************************************************************
@@ -135,6 +141,8 @@ bool path_man::path_len_check(const Eigen::MatrixXd& path)
   //double pathLength = path_man::path_len(path);
   return (path_len(path) > minPathLen_);
 }
+
+// ***************************************************************************
 
 // ***************************************************************************
 
