@@ -4,6 +4,7 @@
 #include <iostream>
 #include <eigen3/Eigen/Core>
 #include <boost/graph/adjacency_list.hpp>
+#include <boost/graph/astar_search.hpp>
 #include <vector>
 #include <random>
 #include <chrono>
@@ -78,12 +79,47 @@ public:
   void update_octomap(DynamicEDTOctomap*, octomap::OcTree*);
 
   std::vector<VertexDescriptor> find_vertices_inside_box(const Eigen::Vector3d&, const Eigen::Vector3d&);
+  Eigen::MatrixXd plan_shortest_path(const VertexDescriptor& fromVertex, const VertexDescriptor& toVertex);
 
   double volumetric_gain(Eigen::Vector3d, octomap::OcTree*, double);
   int n_unseen_neighbors(octomap::OcTree*, octomap::OcTreeKey*);
   void update_frontiers_vol_gain();
   bool add_path(Eigen::MatrixXd& path, bool containFrontier);
   Eigen::Vector3d get_pos(const VertexDescriptor&);
+};
+
+// ***************************************************************************
+template <class Graph, class CostType>
+class distance_heuristic : public boost::astar_heuristic< Graph, CostType >
+{
+private:
+  VertexDescriptor goalVert_;
+  BiDirectionalGraph* adjList_;
+public:
+  distance_heuristic(VertexDescriptor goalVert, BiDirectionalGraph* adjList): goalVert_(goalVert), adjList_(adjList) {}
+  CostType operator()(const VertexDescriptor& u)
+  {
+    return ( (*adjList_)[u].pos - (*adjList_)[goalVert_].pos ).norm();
+  }
+};
+
+// ***************************************************************************
+struct found_goal {}; // exception for search termination
+
+// ***************************************************************************
+// visitor that terminates when we find the goal
+template <class Graph, class Vertex>
+class goal_visitor : public boost::default_astar_visitor
+{
+private:
+  Vertex goalVert_;
+public:
+  goal_visitor(Vertex goalVert) : goalVert_(goalVert) {}
+  void examine_vertex(const Vertex& u, const Graph& g) 
+  {
+    if(u == goalVert_)
+      throw found_goal();
+  }
 };
 
 #endif

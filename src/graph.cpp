@@ -294,6 +294,38 @@ Eigen::Vector3d graph::get_pos(const VertexDescriptor& vertexD)
 }
 
 // ***************************************************************************
+Eigen::MatrixXd graph::plan_shortest_path(const VertexDescriptor& fromVertex, const VertexDescriptor& toVertex)
+{
+  std::vector<VertexDescriptor> pM(boost::num_vertices(*adjList_));
+  std::vector<double> dM(boost::num_vertices(*adjList_));
+  try 
+  {
+    // call astar named parameter interface
+    boost::astar_search ( *adjList_, fromVertex, 
+                          distance_heuristic<BiDirectionalGraph, double> (toVertex, adjList_),
+                          boost::predecessor_map( boost::make_iterator_property_map(pM.begin(), boost::get(boost::vertex_index, *adjList_)) )
+                          .distance_map( boost::make_iterator_property_map(dM.begin(), boost::get(boost::vertex_index, *adjList_)) )
+                          .visitor( goal_visitor<BiDirectionalGraph, VertexDescriptor>(toVertex) ) );
+  
+  } 
+  catch(found_goal fG) 
+  { 
+    // found a path to the goal
+    std::list<Eigen::Vector3d> shortestPath;
+    for(VertexDescriptor vert = toVertex;; vert = pM[vert]) 
+    {
+      shortestPath.push_front( get_pos(vert) );
+      if(pM[vert] == vert)
+        break;
+    }
+
+    return Eigen::Map<Eigen::MatrixXd>( ( *(shortestPath.begin()) ).data(), shortestPath.size(), 3 );
+  }
+  
+  return Eigen::MatrixXd(0,0);
+}
+
+// ***************************************************************************
 double graph::volumetric_gain(Eigen::Vector3d ptIn, octomap::OcTree* octTree, double sensRange) // stale function
 {
 
