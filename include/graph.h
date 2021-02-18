@@ -80,6 +80,7 @@ public:
 
   std::vector<VertexDescriptor> find_vertices_inside_box(const Eigen::Vector3d&, const Eigen::Vector3d&);
   Eigen::MatrixXd plan_shortest_path(const VertexDescriptor& fromVertex, const VertexDescriptor& toVertex);
+  frontier get_best_frontier();
 
   double volumetric_gain(Eigen::Vector3d, octomap::OcTree*, double);
   int n_unseen_neighbors(octomap::OcTree*, octomap::OcTreeKey*);

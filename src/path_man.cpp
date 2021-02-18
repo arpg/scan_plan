@@ -43,8 +43,21 @@ std::pair<double, double> path_man::mean_heading_height(const Eigen::MatrixXd& p
 
   return std::pair<double,double>( atan2(estDirVec(1), estDirVec(0)), avgHeight );
 }
+
 // ***************************************************************************
-void path_man::publish_path(const Eigen::MatrixXd& eigPath, std::string frameId, const ros::Publisher& pathPub)
+void path_man::publish_empty_path(const std::string& frameId, const ros::Publisher& pathPub)
+{
+  nav_msgs::Path path;
+
+  path.header.frame_id = frameId;
+  path.header.stamp = ros::Time::now();
+  path.poses.resize(0);
+
+  pathPub.publish(path);
+}
+
+// ***************************************************************************
+void path_man::publish_path(const Eigen::MatrixXd& eigPath, const std::string& frameId, const ros::Publisher& pathPub)
 {
   if(eigPath.rows() < 2)
     return;

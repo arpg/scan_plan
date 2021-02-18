@@ -326,6 +326,40 @@ Eigen::MatrixXd graph::plan_shortest_path(const VertexDescriptor& fromVertex, co
 }
 
 // ***************************************************************************
+frontier graph::get_best_frontier() // returns frontier with <= 0 volGain if none found
+{
+  if(frontiers_.empty())
+  {
+    frontier front;
+    front.volGain = -1;
+    return front;
+  }
+
+  int sz = 0;
+  for(frontier& front: frontiers_)
+    sz++;
+  std::cout << "Num Frontiers: " <<  sz << std::endl;
+
+  frontier bestFront = frontiers_.front(); // initialize with first frontier
+  double bestCost = bestFront.volGain; // initialize min cost with first 
+
+  int n = -1;
+  for(frontier& front: frontiers_)
+  {
+    if(n++ < 1)
+      continue;
+    
+    if( (front.volGain > bestCost))
+    {
+      bestFront = front;
+      bestCost = front.volGain;
+    }
+  }
+
+  return bestFront;
+}
+
+// ***************************************************************************
 double graph::volumetric_gain(Eigen::Vector3d ptIn, octomap::OcTree* octTree, double sensRange) // stale function
 {
 

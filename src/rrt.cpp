@@ -1,7 +1,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-rrt::rrt(int nNodes, const std::vector<double>& minBnds, const std::vector<double>& maxBnds, double radNear, double delDist, double radRob, int failItr, octomap_man* octMan)
+rrt::rrt(int nNodes, const std::vector<double>& minBnds, const std::vector<double>& maxBnds, double radNear, double delDist, double radRob, double succRad, int failItr, octomap_man* octMan)
 {
   posNds_.resize(nNodes,3);
   cstNds_.resize(nNodes);
@@ -22,6 +22,7 @@ rrt::rrt(int nNodes, const std::vector<double>& minBnds, const std::vector<doubl
   nNodes_ = nNodes;
 
   radRob_ = radRob;
+  succRad_ = succRad;
 
   failItr_ = failItr;
 
@@ -215,8 +216,7 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
       }
     }
 
-    // TODO: make succRad a parameter
-    if (posRoot != posGoal && (posNds_.row(actNds_-1).transpose() - posGoal).squaredNorm() < pow(radRob_*4,2) ) // assuming succRad = radRob_*4
+    if (posRoot != posGoal && (posNds_.row(actNds_-1).transpose() - posGoal).squaredNorm() < pow(succRad_,2) ) // assuming succRad = radRob_*4
       return actNds_-1;
 
   } // end while

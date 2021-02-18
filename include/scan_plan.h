@@ -16,6 +16,19 @@
 
 #include "path_man.h"
 
+struct plan_status
+{
+  enum MODE {LOCALEXP, GOALPT, GLOBALEXP};
+
+  MODE mode = MODE::LOCALEXP;
+  Eigen::Vector3d goalPt = Eigen::Vector3d(0,0,0); // if planning to a goal point
+  VertexDescriptor goalVtx; // if planning to a goal vertex
+
+  double volExp = 0; // cubic meters per volGainMonitorDur secs (since lastVolGainCheck)
+  ros::Time volExpStamp = ros::Time::now();
+
+  bool changeDetected_ = false;
+};
 
 // ***************************************************************************
 class scan_plan
@@ -71,14 +84,16 @@ private:
 
   Eigen::MatrixXd minCstPath_;
 
-  double pi_ = acos(-1);
+  const double pi_ = acos(-1);
 
-  bool changeDetected_;
-  //double monitorTimeModeSwitch_;
+  plan_status status_;
+
+  double volGainMonitorDur_; // secs
+  double minVolGainLocalPlan_;
+
+  double endOfPathSuccRad_;
 
 public:
-  enum MODE {LOCALEXP, GLOBALEXP, RETURN, REPORT, GOAL};
-
   scan_plan(ros::NodeHandle*);
   ~scan_plan();
 
@@ -104,9 +119,10 @@ public:
   void pose_hist_cb(const nav_msgs::Path& poseHistMsg);
 
   Eigen::MatrixXd generate_local_exp_path(std::vector<int>& idLeaves, int& idPathLeaf);
-  scan_plan::MODE next_mode();
   Eigen::MatrixXd plan_to_graph(const Eigen::Vector3d& fromPos, VertexDescriptor& toVertex);
   Eigen::MatrixXd plan_from_graph(const Eigen::Vector3d& toPos, VertexDescriptor& fromVertex);
+
+  void update_explored_volume(const double& expVol);
   
 };
 

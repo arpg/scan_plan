@@ -24,7 +24,8 @@ public:
 
   static double path_len(const Eigen::MatrixXd& path);
   static std::pair<double, double> mean_heading_height(const Eigen::MatrixXd& path, const int& nLastPts);
-  static void publish_path(const Eigen::MatrixXd& eigPath, std::string frameId, const ros::Publisher& pathPub);
+  static void publish_path(const Eigen::MatrixXd& eigPath, const std::string& frameId, const ros::Publisher& pathPub);
+  static void publish_empty_path(const std::string& frameId, const ros::Publisher& pathPub);
   static std::pair<double, double> mean_heading_height_err(double yawIn, double heightIn, const Eigen::MatrixXd& pathIn);
   static double path_to_path_dist(const Eigen::MatrixXd& path1, const Eigen::MatrixXd& path2);
   static double point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::MatrixXd& pathIn);
