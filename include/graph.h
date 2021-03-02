@@ -60,6 +60,7 @@ private:
   octomap_man* octMan_;
 
   std::forward_list<frontier> frontiers_;
+  double minManDistFrontier_;
 
   std::string frameId_;
  
@@ -70,7 +71,7 @@ private:
  
 public:
   ~graph();
-  graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan);
+  graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double);
   
   bool add_vertex(const gvert);
   bool u_coll(const gvert, const gvert);  
@@ -87,6 +88,7 @@ public:
   void update_frontiers_vol_gain();
   bool add_path(Eigen::MatrixXd& path, bool containFrontier);
   Eigen::Vector3d get_pos(const VertexDescriptor&);
+  double closestFrontierManDist(const Eigen::Vector3d& ptIn);
 };
 
 // ***************************************************************************

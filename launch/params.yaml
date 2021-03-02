@@ -8,22 +8,23 @@ sensor_frame_ids: [A01/base_link/front_laser]
 
 min_bounds_local: [-10, -10, -3.0] # used for local path planning
 max_bounds_local: [10, 10, 3.0]
-n_rrt_nodes: 100
+n_rrt_nodes: 300
 near_radius_rrt: 2.0
 delta_distance_rrt: 1.0
 n_fail_iterations_rrt: 1000
+succ_rad_rrt: 0.7
 
 nearest_radius_graph: 1.0
 near_radius_graph: 5.0 # 2 times delta_distance_rrt
-min_vol_gain_cubic_m: 5 # calculate wisely
+min_vol_gain_frontier: 5 # calculate wisely
 home_position: [4, 0, 1.5] # should be collision-free
 
-time_interval_replan: 5.0
+time_interval_replan: 10.0
 
 esdf_max_dist: 5.0 # greater than robot radius
-esdf_unknown_as_occupied: false
+esdf_unknown_as_occupied: true
 vehicle_type: air
-robot_radius: 0.75
+robot_radius: 0.7
 max_ground_roughness: 60 # angle from positive z (radians)
 max_ground_step: 0.85 # greater than octomap resolution
 ground_plane_search_distance: 1.0
@@ -33,5 +34,9 @@ c_gain: [2.2, 0.8, 1.0, 0.1]
 min_bnds_geofence: [3.5, -100000, -100000]
 max_bnds_geofence: [100000, 100000, 100000]
 n_hist_pts_for_exploration_dir: 10
+vol_gain_monitor_dur_mode_switch: 5
+succ_rad_end_of_path: 1.0
+min_vol_gain_local_plan: -1.0
+
 
 verbose: true

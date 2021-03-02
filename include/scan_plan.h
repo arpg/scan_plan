@@ -123,6 +123,8 @@ public:
   Eigen::MatrixXd plan_from_graph(const Eigen::Vector3d& toPos, VertexDescriptor& fromVertex);
 
   void update_explored_volume(const double& expVol);
+
+  Eigen::MatrixXd plan_path_to_point(const Eigen::Vector3d& goalPos);
   
 };
 

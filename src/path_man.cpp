@@ -117,7 +117,7 @@ bool path_man::validate_path(Eigen::MatrixXd& path)
 {
   // returns false if path length changes, and the modified path
 
-  if(path.rows() < 2) // no path with one point is valid
+  if(path.rows() < 2) // path with one point is invalid, nothing to check
   {
     path.conservativeResize(0, Eigen::NoChange);
     return true;

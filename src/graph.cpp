@@ -2,7 +2,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan)
+graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier)
 {
   adjList_ = new BiDirectionalGraph;
 
@@ -20,6 +20,7 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double 
   radRob_ = radRob;
   frameId_ = frameId;
   minVolGain_ = minVolGain;
+  minManDistFrontier_ = minManDistFrontier;
 
   std::pair<VertexIterator, VertexIterator> vertItr = vertices(*adjList_);
 
@@ -244,8 +245,18 @@ void graph::update_frontiers_vol_gain()
 // ***************************************************************************
 bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
 {
+  if(path.rows() < 1)
+    return false;
+
   bool success= false;
 
+  // first check if the new frontier is distant enough from the existing ones
+
+  int fIndx = path.rows()-1; // potential frontier index = last point on path
+  Eigen::Vector3d frontPt( path(fIndx,0), path(fIndx,1), path(fIndx,2) );
+  if( containFrontier && !frontiers_.empty() && (closestFrontierManDist(frontPt) < minManDistFrontier_) )
+    return false;
+  
   gvert vert;
   for(int i=0; i<path.rows(); i++)
   {
@@ -264,6 +275,28 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
   }
 
   return success;
+}
+
+// ***************************************************************************
+double graph::closestFrontierManDist(const Eigen::Vector3d& ptIn) // closest frontier to the ptIn
+{
+  if(frontiers_.empty())
+    return -1.0;  
+
+  frontier closestFront = frontiers_.front(); // pick the first frontier as the best guess
+  double minDist = (get_pos(closestFront.vertDesc) - ptIn).lpNorm<1>();
+
+  for(frontier& front: frontiers_)
+  {
+    double manDist = (get_pos(front.vertDesc) - ptIn).lpNorm<1>();
+    if( manDist < minDist )
+    {
+      closestFront = front;
+      minDist = manDist;
+    }
+  }
+
+  return minDist;
 }
 
 // ***************************************************************************
@@ -319,7 +352,16 @@ Eigen::MatrixXd graph::plan_shortest_path(const VertexDescriptor& fromVertex, co
         break;
     }
 
-    return Eigen::Map<Eigen::MatrixXd>( ( *(shortestPath.begin()) ).data(), shortestPath.size(), 3 );
+    Eigen::MatrixXd shortestPathEig(shortestPath.size(),3);
+
+    int itr = 0;
+    for(Eigen::Vector3d& vert: shortestPath)
+    {
+      shortestPathEig.row(itr) = vert.transpose();
+      itr++;
+    }
+
+    return shortestPathEig;
   }
   
   return Eigen::MatrixXd(0,0);

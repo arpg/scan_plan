@@ -113,20 +113,22 @@ void scan_plan::setup_graph()
   // prereqs setup_pose, setup_octomap
 
   ROS_INFO("%s: Waiting for graph params ...", nh_->getNamespace().c_str());
-  double graphRadNear, minVolGain, graphRadNearest;
+  double graphRadNear, minVolGain, graphRadNearest, minManDistFrontier;
   std::vector<double> homePos;
  
   while(!nh_->getParam("near_radius_graph", graphRadNear));
   while(!nh_->getParam("nearest_radius_graph", graphRadNearest));
   while(!nh_->getParam("min_vol_gain_frontier", minVolGain)); // used for local/global switching and removing frontiers, (m^3)
   while(!nh_->getParam("home_position", homePos)); // must be collision-free
+  while(!nh_->getParam("min_man_dist_frontiers", minManDistFrontier));
+ 
   
   ROS_INFO("%s: Setting up graph ...", nh_->getNamespace().c_str());
   homePos_(0) = homePos[0];
   homePos_(1) = homePos[1];
   homePos_(2) = homePos[2];
 
-  graph_ = new graph(homePos_, graphRadNear, graphRadNearest, radRob_, minVolGain, worldFrameId_, octMan_);
+  graph_ = new graph(homePos_, graphRadNear, graphRadNearest, radRob_, minVolGain, worldFrameId_, octMan_, minManDistFrontier);
 }
 
 // ***************************************************************************
@@ -241,18 +243,19 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   std::cout << "Checking for End-of-Path" << std::endl;
   if( (minCstPath_.rows() > 0) && ( (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) )
   {
+    std::cout << "End-of-Path" << std::endl;
     status_.mode = plan_status::MODE::LOCALEXP;
-    timerReplan_.setPeriod(ros::Duration(0.5), true);
+    timerReplan_.setPeriod(ros::Duration(0.2), true);
   }
 
   std::cout << "Validating path" << std::endl;
-  status_.changeDetected_ = !( pathMan_->validate_path(minCstPath_) );
-  pathMan_->publish_path(minCstPath_, worldFrameId_, pathPub_);
-  if(status_.changeDetected_)
-  {
-    status_.mode = plan_status::MODE::LOCALEXP;
-    timerReplan_.setPeriod(ros::Duration(0.5), true);
-  }
+  //status_.changeDetected_ = !( pathMan_->validate_path(minCstPath_) );
+  //pathMan_->publish_path(minCstPath_, worldFrameId_, pathPub_);
+  //if(status_.changeDetected_ && status_.mode != plan_status::MODE::LOCALEXP)
+  //{
+  //  status_.mode = plan_status::MODE::LOCALEXP;
+  //  timerReplan_.setPeriod(ros::Duration(0.5), true);
+  //}
 
   if( status_.mode == plan_status::MODE::LOCALEXP && (ros::Time::now() - status_.volExpStamp).toSec() > volGainMonitorDur_ ) 
   {
@@ -268,7 +271,7 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 
     update_explored_volume(volExp);
   }
-  if(status_.mode != plan_status::MODE::LOCALEXP) // if not locally exploring, update volumetric gain frequently to start monitoring when it does start locally exploring
+  else if(status_.mode != plan_status::MODE::LOCALEXP) // if not locally exploring, update volumetric gain frequently to start monitoring when it does start locally exploring
   {
     std::cout << "Updating volumetric gain, not locally exploring" << std::endl;
     update_explored_volume(octTree->getNumLeafNodes() * pow(octmpMsg.resolution,3));
@@ -292,8 +295,28 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 
   switch(status_.mode)
   {
+    case plan_status::MODE::GOALPT:
+    {
+      std::cout << "Planning to the goal point" << std::endl;
+      path_man::publish_empty_path(worldFrameId_, pathPub_);
+      Eigen::MatrixXd minCstPath = plan_path_to_point(status_.goalPt);
+      if(minCstPath.rows() > 1) // path found
+      {
+        std::cout << "Path to point found" << std::endl;
+        minCstPath_ = minCstPath;
+        timerReplan_.setPeriod(ros::Duration(5*60), true); // replan timer set to a large value, hoping the end-of-path or change detection will trigger replanning  TODO: make duration a parameter
+      }
+      else
+      {
+        std::cout << "Path to point not found" << std::endl;
+        status_.mode = plan_status::MODE::LOCALEXP;
+        timerReplan_.setPeriod(ros::Duration(timeIntReplan_), true);
+      }
+      break;
+    }
     case plan_status::MODE::GLOBALEXP:
     {
+      std::cout << "Planning to a frontier" << std::endl;
       path_man::publish_empty_path(worldFrameId_, pathPub_);
       //==Eigen::MatrixXd minCstPath = generate_global_exp_path();
       Eigen::MatrixXd minCstPath;
@@ -312,14 +335,16 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 
     case plan_status::MODE::LOCALEXP:
     {
+      std::cout << "Exploring locally" << std::endl;
       std::vector<int> idLeaves;
       int idPathLeaf;
       Eigen::MatrixXd minCstPath = generate_local_exp_path(idLeaves, idPathLeaf);
 
       if( minCstPath.rows() > 1 ) // path found
       {
+        minCstPath_ = minCstPath;
         std::cout << "Adding paths to the graph" << std::endl;
-        timerReplan_.setPeriod(ros::Duration(timeIntReplan_), false); // don't reset timer
+        timerReplan_.setPeriod(ros::Duration(timeIntReplan_), true); // don't reset timer
         bool success = add_paths_to_graph(rrtTree_, idLeaves, idPathLeaf, graph_);
         if(!success)
           ROS_WARN("%s: Graph connection unsuccessful", nh_->getNamespace().c_str());
@@ -362,10 +387,64 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
 }
 
 // ***************************************************************************
+Eigen::MatrixXd scan_plan::plan_path_to_point(const Eigen::Vector3d& goalPos)
+{
+  update_base_to_world();
+  Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
+
+  std::cout << "Checking if goal and robot positions are different" << std::endl;
+  if(goalPos == robPos) // if goal and robot pos is same
+    return Eigen::MatrixXd(0,0);
+
+  std::cout << "Checking if goal and robot positions can be connected via a straight line" << std::endl;
+  if(!octMan_->u_coll(robPos, goalPos)) // try to connect via straight line
+  {
+    Eigen::MatrixXd minCstPath(2,3);
+    minCstPath.row(0) = robPos.transpose();
+    minCstPath.row(1) = goalPos.transpose();
+    return minCstPath;
+  }
+
+  std::cout << "Checking if goal and robot positions are within local bounds of each other" << std::endl;
+  if( ((goalPos-robPos-localBndsMin_).array() > 0).all() && ((goalPos-robPos-localBndsMax_).array() < 0).all() ) // if goal is within local bounds of robot, try rrt
+  {
+    rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
+    int idLeaf = rrtTree_->build(robPos, goalPos);
+
+    if(idLeaf != 0) // if a path is found
+      return rrtTree_->get_path(idLeaf);
+  }
+
+  std::cout << "Planning to graph" << std::endl;
+  VertexDescriptor vertD1;
+  Eigen::MatrixXd minCstPath1 = plan_to_graph(robPos, vertD1);
+  if(minCstPath1.rows() < 2)
+    return Eigen::MatrixXd(0,0);
+
+  std::cout << "Planning from graph" << std::endl;
+  octMan_->update_esdf(localBndsMin_+goalPos, localBndsMax_+goalPos); // getting the esdf around the goal rather than default robot position
+  VertexDescriptor vertD2;
+  Eigen::MatrixXd minCstPath2 = plan_from_graph(goalPos, vertD2);
+  if(minCstPath2.rows() < 2)
+    return Eigen::MatrixXd(0,0);
+  octMan_->update_esdf(localBndsMin_+robPos, localBndsMax_+robPos);  // getting the esdf back around default robot position
+
+  std::cout << "Planning vertex to vertex" << std::endl;
+  Eigen::MatrixXd minCstPathG = graph_->plan_shortest_path(vertD1, vertD2);
+  if(minCstPathG.rows() < 2)
+    return Eigen::MatrixXd(0,0);
+
+  std::cout << "Appending paths together" << std::endl;
+  Eigen::MatrixXd minCstPath(minCstPath1.rows()+minCstPathG.rows()+minCstPath2.rows(), 3);
+  minCstPath << minCstPath1, minCstPathG, minCstPath2;
+  return minCstPath;
+}
+
+// ***************************************************************************
 Eigen::MatrixXd scan_plan::plan_from_graph(const Eigen::Vector3d& toPos, VertexDescriptor& fromVertex)
 {
   // returns a path and the graph vertex start point
-  return ( plan_to_graph(toPos, fromVertex) ).rowwise().reverse(); // plan from the goal point to graph, then flip the path 
+  return ( plan_to_graph(toPos, fromVertex) ).colwise().reverse(); // plan from the goal point to graph, then flip the path 
 }
 
 // ***************************************************************************
@@ -380,11 +459,16 @@ Eigen::MatrixXd scan_plan::plan_to_graph(const Eigen::Vector3d& fromPos, VertexD
     return Eigen::MatrixXd(0,0);
   }
 
+  std::cout << "From Position: " << fromPos.transpose() << std::endl;
+  std::cout << "Checking Nearby Graph Vertices: ";
+
   std::cout << "Connecting to graph via a straight line" << std::endl;
   for(int i=0; i<vertices.size(); i++)
   {
     toVertex = vertices[i];
     Eigen::Vector3d vertexPos = graph_->get_pos(toVertex);
+
+    std::cout << vertexPos.transpose() << std::endl;
 
     if( octMan_->u_coll( fromPos, vertexPos) )
       continue;
@@ -401,6 +485,7 @@ Eigen::MatrixXd scan_plan::plan_to_graph(const Eigen::Vector3d& fromPos, VertexD
     toVertex = vertices[i];
     Eigen::Vector3d vertexPos = graph_->get_pos(toVertex);
 
+    rrtTree_->set_bounds( geofence_saturation(localBndsMin_+fromPos), geofence_saturation(localBndsMax_+fromPos) );
     int leafId = rrtTree_->build(fromPos, vertexPos); // using goal-bias rrt to find a path 
 
     if( leafId < 1 ) // if root node is returned / if a path is not found
@@ -412,6 +497,13 @@ Eigen::MatrixXd scan_plan::plan_to_graph(const Eigen::Vector3d& fromPos, VertexD
 
   std::cout << "Giving up" << std::endl;
   return Eigen::MatrixXd(0,0);
+}
+
+// ***************************************************************************
+Eigen::MatrixXd scan_plan::plan_global_exp_path() 
+{
+  graph_->update_frontiers_vol_gain();
+  
 }
 
 // ***************************************************************************
@@ -465,7 +557,7 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
 {
   //TODO: Add paths with best pose history distances instead of randomly choosing
 
-  const int nGraphPaths = 5; // assuming 10 paths in total are to be added to the graph
+  const int nGraphPaths_ = 5; // assuming 10 paths in total are to be added to the graph
   bool success = false;
 
   Eigen::MatrixXd path;
@@ -473,25 +565,24 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
   std::cout << "Adding non-lookahead paths" << std::endl;
   // all other paths
 
-  int nCurrGraphPaths = 0;
-  while((nCurrGraphPaths < (nGraphPaths-1)) && (nCurrGraphPaths < idLeaves.size()))
+  int nGraphPaths = 0;
+  for(int i=0; i<idLeaves.size(); i++)
   {
-    if(idLeaves[nCurrGraphPaths] == idLookaheadLeaf)
-    {
-      nCurrGraphPaths++;
-      continue;
-    }
+    if(nGraphPaths > nGraphPaths_)
+      break;
 
-    path = tree->get_path(idLeaves[nCurrGraphPaths]);
+    if(idLeaves[i] == idLookaheadLeaf)
+      continue;
+
+    path = tree->get_path(idLeaves[i]);
     if( !pathMan_->path_len_check(path) )
-    {
-      nCurrGraphPaths++;
       continue;
-    }
-
+    
     if( gph->add_path(path, true) )
+    {
+      nGraphPaths++;
       success = true;
-    nCurrGraphPaths++;
+    }
   }
 
   std::cout << "Adding lookahead path" << std::endl;
@@ -507,6 +598,12 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
 // ***************************************************************************
 void scan_plan::goal_cb(const geometry_msgs::PointStamped& goalMsg)
 {
+  status_.goalPt(0) = goalMsg.point.x;
+  status_.goalPt(1) = goalMsg.point.y;
+  status_.goalPt(2) = goalMsg.point.z;
+
+  status_.mode = plan_status::MODE::GOALPT;
+  timerReplan_.setPeriod(ros::Duration(0.5), false); // don't reset the timer because the goal could be coming in at high frequency
 }
 
 // ***************************************************************************
