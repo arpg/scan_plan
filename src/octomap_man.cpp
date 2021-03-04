@@ -151,7 +151,7 @@ bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos, double& roughness, E
   for(int i=0; i<surfCoordsBase_.rows(); i++)
   {
     //std::cout << "Projecting to ground: " << (surfCoordsBase_.row(i).transpose() + pos).transpose() << std::endl;
-    if( !project_point_to_ground( surfCoordsBase_.row(i).transpose() + pos, currRoughness, currGroundPt ) ) // translate robot shadow point to pos and project
+    if( !project_point_to_ground( surfCoordsBase_.row(i) + pos.transpose(), currRoughness, currGroundPt ) ) // translate robot shadow point to pos and project
       continue;
     //std::cout << "Successfully projected roughness: " << roughness << std::endl;
     roughness += currRoughness;

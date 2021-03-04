@@ -237,7 +237,11 @@ void graph::update_frontiers_vol_gain()
     sz++;
   std::cout << "Num Frontiers: " <<  sz << std::endl;
   for(frontier& front: frontiers_)
+  {
     front.volGain = octMan_->volumetric_gain( (*adjList_)[front.vertDesc].pos );
+    if(front.volGain < minVolGain_)
+      (*adjList_)[front.vertDesc].isFrontier = false;
+  }
   double minV = minVolGain_;
   frontiers_.remove_if( [&minV](const frontier& front) -> bool {return (front.volGain < minV);} ); // lambda expression
 }
@@ -254,13 +258,14 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
 
   int fIndx = path.rows()-1; // potential frontier index = last point on path
   Eigen::Vector3d frontPt( path(fIndx,0), path(fIndx,1), path(fIndx,2) );
-  if( containFrontier && !frontiers_.empty() && (closestFrontierManDist(frontPt) < minManDistFrontier_) )
+  if( containFrontier && !frontiers_.empty() && (closest_frontier_man_dist(frontPt) < minManDistFrontier_) )
     return false;
   
   gvert vert;
   for(int i=0; i<path.rows(); i++)
   {
     vert.pos = path.row(i);
+ 
     vert.commSig = 0;
     
     if( containFrontier && i==(path.rows()-1) )
@@ -278,7 +283,7 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
 }
 
 // ***************************************************************************
-double graph::closestFrontierManDist(const Eigen::Vector3d& ptIn) // closest frontier to the ptIn
+double graph::closest_frontier_man_dist(const Eigen::Vector3d& ptIn) // closest frontier to the ptIn
 {
   if(frontiers_.empty())
     return -1.0;  
@@ -357,7 +362,7 @@ Eigen::MatrixXd graph::plan_shortest_path(const VertexDescriptor& fromVertex, co
     int itr = 0;
     for(Eigen::Vector3d& vert: shortestPath)
     {
-      shortestPathEig.row(itr) = vert.transpose();
+      shortestPathEig.row(itr) = vert;
       itr++;
     }
 
@@ -399,6 +404,20 @@ frontier graph::get_best_frontier() // returns frontier with <= 0 volGain if non
   }
 
   return bestFront;
+}
+
+// ***************************************************************************
+bool graph::is_valid(const VertexDescriptor& vertDesc)
+{
+  bool isValid = false;
+  
+  std::pair<VertexIterator, VertexIterator> vertItr = vertices(*adjList_);
+  for(VertexIterator it=vertItr.first; it!=vertItr.second; ++it)
+  {
+    if(*it == vertDesc)
+      return true;
+  }
+  return false;
 }
 
 // ***************************************************************************

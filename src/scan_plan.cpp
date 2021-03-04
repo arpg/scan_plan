@@ -243,7 +243,7 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   std::cout << "Checking for End-of-Path" << std::endl;
   if( (minCstPath_.rows() > 0) && ( (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) )
   {
-    std::cout << "End-of-Path" << std::endl;
+    std::cout << "End-of-Path: " << (robPos.transpose()-minCstPath_.bottomRows(1)).norm() << std::endl;
     status_.mode = plan_status::MODE::LOCALEXP;
     timerReplan_.setPeriod(ros::Duration(0.2), true);
   }
@@ -266,7 +266,7 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
     if( (volExp - status_.volExp) < minVolGainLocalPlan_ )
     {
       status_.mode = plan_status::MODE::GLOBALEXP;
-      timerReplan_.setPeriod(ros::Duration(0.5), true);
+      timerReplan_.setPeriod(ros::Duration(0.2), true);
     }
 
     update_explored_volume(volExp);
@@ -318,17 +318,18 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
     {
       std::cout << "Planning to a frontier" << std::endl;
       path_man::publish_empty_path(worldFrameId_, pathPub_);
-      //==Eigen::MatrixXd minCstPath = generate_global_exp_path();
-      Eigen::MatrixXd minCstPath;
+      Eigen::MatrixXd minCstPath = plan_global_exp_path();
       if(minCstPath.rows() > 1) // path found
       {
+        std::cout << "Path to frontier found" << std::endl;
         minCstPath_ = minCstPath;
         timerReplan_.setPeriod(ros::Duration(5*60), true); // replan timer set to a large value, hoping the end-of-path or change detection will trigger replanning  TODO: make duration a parameter
       }
       else
       {
+        std::cout << "Path to frontier not found" << std::endl;
         status_.mode = plan_status::MODE::LOCALEXP;
-        timerReplan_.setPeriod(ros::Duration(timeIntReplan_), true);
+        timerReplan_.setPeriod(ros::Duration(timeIntReplan_), false); // if no global path is found, immidiately plan locally
       }
       break;
     }
@@ -349,6 +350,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
         if(!success)
           ROS_WARN("%s: Graph connection unsuccessful", nh_->getNamespace().c_str());
       }
+      else
+        timerReplan_.setPeriod(ros::Duration(0.2), true); // don't reset timer, immidiately replan again
 
       rrtTree_->publish_viz(vizPub_,worldFrameId_,idLeaves);
       break;
@@ -400,8 +403,9 @@ Eigen::MatrixXd scan_plan::plan_path_to_point(const Eigen::Vector3d& goalPos)
   if(!octMan_->u_coll(robPos, goalPos)) // try to connect via straight line
   {
     Eigen::MatrixXd minCstPath(2,3);
-    minCstPath.row(0) = robPos.transpose();
-    minCstPath.row(1) = goalPos.transpose();
+
+    minCstPath.row(0) = robPos;
+    minCstPath.row(1) = goalPos;
     return minCstPath;
   }
 
@@ -474,8 +478,9 @@ Eigen::MatrixXd scan_plan::plan_to_graph(const Eigen::Vector3d& fromPos, VertexD
       continue;
 
     Eigen::MatrixXd path(2,3);
-    path.row(0) = fromPos.transpose();
-    path.row(1) = vertexPos.transpose();
+
+    path.row(0) = fromPos;
+    path.row(1) = vertexPos;
     return path;
   }
 
@@ -503,7 +508,37 @@ Eigen::MatrixXd scan_plan::plan_to_graph(const Eigen::Vector3d& fromPos, VertexD
 Eigen::MatrixXd scan_plan::plan_global_exp_path() 
 {
   graph_->update_frontiers_vol_gain();
+  frontier front = graph_->get_best_frontier();
+
+  return plan_path_to_point(graph_->get_pos(front.vertDesc));
+
+  if(front.volGain <= 0) // if there is no frontier
+    return Eigen::MatrixXd(0,0);
+
+  update_base_to_world();
+  Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
+
+  std::cout << "Planning to graph" << std::endl;
+  VertexDescriptor vertD1;
+  Eigen::MatrixXd minCstPath1 = plan_to_graph(robPos, vertD1);
+  if(minCstPath1.rows() < 2)
+    return Eigen::MatrixXd(0,0);
+
+  std::cout << "Path to graph non-empty" << std::endl;
+  if(vertD1 == front.vertDesc)
+    return minCstPath1;
   
+  std::cout << "Source and target vertices validity? " << graph_->is_valid(vertD1) << ", " << graph_->is_valid(front.vertDesc) << std::endl;
+  Eigen::MatrixXd minCstPath2 = graph_->plan_shortest_path(vertD1, front.vertDesc);
+
+  std::cout << "Planning over graph failed" << std::endl;
+  if(minCstPath2.rows() < 1)
+    return Eigen::MatrixXd(0,0);
+
+  std::cout << "Appending paths together" << std::endl;
+  Eigen::MatrixXd minCstPath(minCstPath1.rows()+minCstPath2.rows(), 3);
+  minCstPath << minCstPath1, minCstPath2;
+  return minCstPath;
 }
 
 // ***************************************************************************
@@ -537,9 +572,11 @@ Eigen::MatrixXd scan_plan::generate_local_exp_path(std::vector<int>& idLeaves, i
     Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
 
     std::pair<double, double> pathYawHeightErr = path_man::mean_heading_height_err(std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), path);
-    double pathCst = cGain_[0] * exp( -1 * path_man::path_to_path_dist(path,posHist_.topRows(posHistSize_)) ) // distance between candidate path and pose history path
+    double pathCst = cGain_[0] * ( -1 * path_man::path_to_path_dist(path,posHist_.topRows(posHistSize_)) ) // distance between candidate path and pose history path
                    + cGain_[1] * std::get<0>(pathYawHeightErr) // distance between the pose history and candidate path headings
                    + cGain_[2] * std::get<1>(pathYawHeightErr); // distance between the pose history and candidate path heights
+
+    //std::cout << "(" << path_man::path_to_path_dist(path,posHist_.topRows(posHistSize_)) << ", " << std::get<0>(pathYawHeightErr) << ", " << std::get<1>(pathYawHeightErr) << "), ";
 
     if( minCst > pathCst && pathMan_->path_len_check(path) ) // minimum path length condition
     {
@@ -547,7 +584,9 @@ Eigen::MatrixXd scan_plan::generate_local_exp_path(std::vector<int>& idLeaves, i
       minCstPath = path;
       idPathLeaf = idLeaves[i];
     }
-  }
+  } 
+
+  //std::cout << std::endl;
 
   return minCstPath;
 }
@@ -670,10 +709,13 @@ geometry_msgs::Quaternion scan_plan::yaw_to_quat(double yaw)
 // ***************************************************************************
 void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
 {
-  if(poseHistMsg.poses.size() > posHist_.size())
+  //std::cout << "Pose history in size: " << poseHistMsg.poses.size() << std::endl;
+  //std::cout << "Pose history current size: " << posHist_.rows() << std::endl;
+
+  if(poseHistMsg.poses.size() > posHist_.rows())
   {
     ROS_INFO("Resizing pose history array");
-    posHist_.conservativeResize(poseHistMsg.poses.size()+100, 3);
+    posHist_.conservativeResize(poseHistMsg.poses.size()+25, 3);
   }
 
   for(int i=0; i<poseHistMsg.poses.size(); i++)

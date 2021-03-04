@@ -216,7 +216,7 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
       }
     }
 
-    if (posRoot != posGoal && (posNds_.row(actNds_-1).transpose() - posGoal).squaredNorm() < pow(succRad_,2) ) // assuming succRad = radRob_*4
+    if (posRoot != posGoal && (posNds_.row(actNds_-1) - posGoal.transpose()).squaredNorm() < pow(succRad_,2) ) // assuming succRad = radRob_*4
       return actNds_-1;
 
   } // end while
