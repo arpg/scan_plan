@@ -8,9 +8,9 @@ sensor_frame_ids: [A01/base_link/front_laser]
 
 min_bounds_local: [-10, -10, -3.0] # used for local path planning
 max_bounds_local: [10, 10, 3.0]
-n_rrt_nodes: 300
+n_rrt_nodes: 500
 near_radius_rrt: 2.0
-delta_distance_rrt: 1.0
+delta_distance_rrt: 0.5
 n_fail_iterations_rrt: 1000
 succ_rad_rrt: 0.7
 
@@ -19,6 +19,8 @@ near_radius_graph: 5.0 # 2 times delta_distance_rrt
 min_vol_gain_frontier: 5.0 # calculate wisely, using discretized camera model
 home_position: [4, 0, 1.5] # should be collision-free
 min_man_dist_frontiers: 4.0
+entrance_min_bnds: [0, -50, -5]
+entrance_max_bnds: [10, 50, 30]
 
 time_interval_replan: 10.0
 

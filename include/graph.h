@@ -28,9 +28,9 @@ struct gvert
   Terrain terrain;
 };
 
-// ***************************************************************************
+// *************************************************************************** // TODO: Checkout other graph types, mutable, undirected? Any faster?
 typedef boost::property<boost::edge_weight_t, int> EdgeWeightProperty;
-typedef boost::adjacency_list<boost::listS, boost::vecS, boost::bidirectionalS, gvert, EdgeWeightProperty > BiDirectionalGraph;
+typedef boost::adjacency_list<boost::listS, boost::vecS, boost::undirectedS, gvert, EdgeWeightProperty > BiDirectionalGraph;
 typedef boost::graph_traits<BiDirectionalGraph>::edge_iterator EdgeIterator;
 typedef boost::graph_traits<BiDirectionalGraph>::vertex_iterator VertexIterator;
 typedef boost::graph_traits<BiDirectionalGraph>::vertex_descriptor VertexDescriptor;
@@ -63,6 +63,11 @@ private:
   double minManDistFrontier_;
 
   std::string frameId_;
+  VertexDescriptor homeVert_;
+  bool isHomeVertConnected_ = false;
+
+  Eigen::Vector3d entranceMin_;
+  Eigen::Vector3d entranceMax_;
  
   // if a node in the graph is removed, the iterators may change, frontier nodes cannot be tracked using VertexIterator in that case
   // Preference 1. Don't remove anything from the graph
@@ -71,7 +76,7 @@ private:
  
 public:
   ~graph();
-  graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double);
+  graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&);
   
   bool add_vertex(const gvert);
   bool u_coll(const gvert, const gvert);  
@@ -90,6 +95,9 @@ public:
   Eigen::Vector3d get_pos(const VertexDescriptor&);
   double closest_frontier_man_dist(const Eigen::Vector3d& ptIn);
   bool is_valid(const VertexDescriptor& vertDesc);
+
+  Eigen::MatrixXd plan_home(const VertexDescriptor&);
+  bool is_entrance(const Eigen::Vector3d&);
 };
 
 // ***************************************************************************

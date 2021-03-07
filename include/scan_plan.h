@@ -13,12 +13,14 @@
 #include "geometry_msgs/PoseArray.h"
 #include "geometry_msgs/PointStamped.h"
 #include "std_msgs/Float64.h"
+#include "std_msgs/Bool.h"
+#include "std_msgs/String.h"
 
 #include "path_man.h"
 
 struct plan_status
 {
-  enum MODE {LOCALEXP, GOALPT, GLOBALEXP};
+  enum MODE {LOCALEXP, GOALPT, GLOBALEXP, REPORT};
 
   MODE mode = MODE::LOCALEXP;
   Eigen::Vector3d goalPt = Eigen::Vector3d(0,0,0); // if planning to a goal point
@@ -43,7 +45,10 @@ private:
   ros::Subscriber octSub_;
   ros::Subscriber poseHistSub_;
   ros::Subscriber goalSub_;
+  ros::Subscriber taskSub_;
 
+  ros::Publisher canPlanPub_;
+  ros::Publisher planModePub_; 
   ros::Publisher pathPub_;
   ros::Publisher compTimePub_;
   ros::Publisher frontiersPub_;
@@ -82,6 +87,9 @@ private:
   Eigen::Vector3d geoFenceMin_;
   Eigen::Vector3d geoFenceMax_;
 
+  Eigen::Vector3d entranceMin_;
+  Eigen::Vector3d entranceMax_;
+
   Eigen::MatrixXd minCstPath_;
 
   const double pi_ = acos(-1);
@@ -117,6 +125,7 @@ public:
   geometry_msgs::Quaternion yaw_to_quat(double yaw);
   bool min_path_len(Eigen::MatrixXd& path);
   void pose_hist_cb(const nav_msgs::Path& poseHistMsg);
+  void task_cb(const std_msgs::String&);
 
   Eigen::MatrixXd generate_local_exp_path(std::vector<int>& idLeaves, int& idPathLeaf);
   Eigen::MatrixXd plan_to_graph(const Eigen::Vector3d& fromPos, VertexDescriptor& toVertex);
@@ -126,6 +135,11 @@ public:
 
   Eigen::MatrixXd plan_path_to_point(const Eigen::Vector3d& goalPos);
   Eigen::MatrixXd plan_global_exp_path();
+  Eigen::MatrixXd plan_home();
+  bool is_entrance(const Eigen::Vector3d& ptIn);
+
+  void publish_plan_mode();
+  void publish_can_plan(bool canPlan);
   
 };
 

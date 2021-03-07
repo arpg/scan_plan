@@ -2,7 +2,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier)
+graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax)
 {
   adjList_ = new BiDirectionalGraph;
 
@@ -13,7 +13,8 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double 
   vertRoot.isFrontier = false; // assumes root is not a frontier
   vertRoot.terrain = gvert::FLAT;
 
-  boost::add_vertex(vertRoot, *adjList_);
+  homeVert_ = boost::add_vertex(vertRoot, *adjList_);
+  isHomeVertConnected_ = false;
 
   radNearest_ = radNearest;
   radNear_ = radNear;
@@ -21,6 +22,9 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double 
   frameId_ = frameId;
   minVolGain_ = minVolGain;
   minManDistFrontier_ = minManDistFrontier;
+
+  entranceMin_ = Eigen::Vector3d(entranceMin[0], entranceMin[1], entranceMin[2]);
+  entranceMax_ = Eigen::Vector3d(entranceMax[0], entranceMax[1], entranceMax[2]);
 
   std::pair<VertexIterator, VertexIterator> vertItr = vertices(*adjList_);
 
@@ -39,7 +43,6 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double 
 // ***************************************************************************
 bool graph::add_vertex(const gvert vertIn)
 {
-
   // TODO: Consider using manhattan distance as the edge cost to speed up 
   bool success = false;
   bool vertexPresent = false;
@@ -78,7 +81,21 @@ bool graph::add_vertex(const gvert vertIn)
     frontiers_.push_front(front);
   }
 
+  if(!isHomeVertConnected_ && boost::in_degree(homeVert_, *adjList_) < 1 ) // if home was not connected and is still not connected (assuming the node is not added above unless connected to home node)
+  {
+    vertInDesc = boost::add_vertex(vertIn, *adjList_);
+    homeVert_ = vertInDesc;
+  }
+  else if(!isHomeVertConnected_ && boost::in_degree(homeVert_, *adjList_) >= 1) // if home was not connected and is now connected
+    isHomeVertConnected_ = true;
+
   return success;
+}
+
+// ***************************************************************************
+Eigen::MatrixXd graph::plan_home(const VertexDescriptor& fromVert)
+{
+  return plan_shortest_path(fromVert, homeVert_);
 }
 
 // ***************************************************************************
@@ -268,7 +285,7 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
  
     vert.commSig = 0;
     
-    if( containFrontier && i==(path.rows()-1) )
+    if( containFrontier && i==(path.rows()-1) && !is_entrance(path.row(i)) )
       vert.isFrontier = true;
     else
       vert.isFrontier = false;
@@ -417,6 +434,15 @@ bool graph::is_valid(const VertexDescriptor& vertDesc)
     if(*it == vertDesc)
       return true;
   }
+  return false;
+}
+
+// ***************************************************************************
+bool graph::is_entrance(const Eigen::Vector3d& ptIn)
+{
+  if( ((ptIn-entranceMin_).array() > 0).all() && ((ptIn-entranceMax_).array() < 0).all() ) // if ptIn is greater than min and less than max
+    return true;
+
   return false;
 }
 
