@@ -1,53 +1,121 @@
 <launch>
 
-  <node name="scan_plan_node" pkg="scan_plan" type="scan_plan_node" output="screen" clear_params="true">
-    <remap from="/scan_plan_node/octomap_in" to="/octomap_binary"/>
-    <remap from="/scan_plan_node/pose_hist_in" to="/A01/pose_history"/>
+	<arg name="mav_name" default="$(env ROS_NAMESPACE)" /> 
+  <arg name="log_output" default="screen"/>
+  
+  <arg name="fore_cam_name" default="$(env TOF_FORE_NAME)"/>
+  <arg name="up_cam_name" default="$(env TOF_UP_NAME)"/>
+  <arg name="down_cam_name" default="$(env TOF_DOWN_NAME)"/>
+  
+  <arg name="fp_config_path" default="$(find apf_pf)/configs"/>
+	<arg name="launch_filter_point_fore" default="true"/>
+  <arg name="launch_depth_to_cloud" default="true" doc="realsense requires conversion from depth to ordered ptcloud"/>
+  <arg name="launch_filter_point_control" default="true"/>
+  
+  <arg name="fore_fp_config" default="qmdp_jint.yaml"/>
+  <arg name="fpc_config" default="qmdpc_jint.yaml"/>
+  
+  <arg name="qmdp" default="true" doc="rep_vec_out is used in qmdp mode, force_out is used in apf mode"/>
+	
+	<arg name="imu_frame" value="$(arg mav_name)/imu_link"/>
+	<arg name="base_frame" value="$(arg mav_name)/base_link"/>
+	<arg name="world_frame" value="world"/>
+
+	<!-- ...................... Global Planner .................... -->
+
+  <node name="scan_plan_node" pkg="scan_plan" type="scan_plan_node" output="screen">
+    <remap from="~/octomap_in" to="octomap_binary"/>
+    <remap from="~/pose_hist_in" to="pose_history"/>
 
     <rosparam command="load" file="$(find scan_plan)/launch/params.yaml" subst_value="true"/>
   </node>
 
+	<!-- ...................... Ground Truth Pose To Tf .................... -->
+
 	<node name="tf_to_pose" pkg="ros_conversions" type="tf_to_pose" output="screen">
-			<remap from="tf_to_pose/pose_topic" to="/A01/ground_truth/pose"/>
+			<remap from="tf_to_pose/pose_topic" to="ground_truth/pose"/>
 			
-			<param name="tf_target_frame" value="world"/>
-			<param name="tf_source_frame" value="A01/base_link"/>
-			<param name="pose_frame_id" value="world"/>
+			<param name="tf_target_frame" value="$(arg world_frame)"/>
+			<param name="tf_source_frame" value="$(arg base_frame)"/>
+			<param name="pose_frame_id" value="$(arg world_frame)"/>
 			
 			<param name="rate" type="double" value="50.0"/>
 		</node>
 
-  <node name="filter_point_control" pkg="apf_pf" type="goal_to_vel_node" output="screen" clear_params="true">
-    <rosparam command="load" file="$(find scan_plan)/launch/apfc.yaml" subst_value="true"/>
-		<param name="pose_frame_id" value="world"/>
-    <param name="base_frame_id" value="A01/base_link"/>
+  <!-- ..................... Depth Image to PtCloud ............................... -->
+
+  <include if="$(arg launch_depth_to_cloud)" ns="$(arg fore_cam_name)" file="$(find apf_pf)/launch/depth_to_cloud.launch">
+   <arg name="cam_info_topic" value="/$(arg mav_name)/$(arg fore_cam_name)/camera_info"/>
+   <arg name="depth_img_topic" value="/$(arg mav_name)/$(arg fore_cam_name)/depth"/>
+   <arg name="pt_cloud_topic" value="/$(arg mav_name)/$(arg fore_cam_name)/depth/points_clipped"/>
+  </include>
+
+	<!-- ...................... Vision-based Repulsive Vector .................... -->
+
+  <group if="$(arg launch_filter_point_fore)" ns="$(arg fore_cam_name)">
+	<node name="filter_point" pkg="apf_pf" type="filter_point_node" output="$(arg log_output)">
 			
-		<remap from="~/pose_in" to="/A01/ground_truth/pose"/>
-    <remap from="~/path_in" to="/scan_plan_node/path_out"/>
+		<remap from="~/pt_cloud_in" to="depth/points_clipped"/>
+		<remap from="~/cam_info_in" to="camera_info"/>
 			
-		<remap from="~/goal_pt_in" to="/scan_plan_node/lookahead_out"/>	
+		<remap from="~/viz_out" to="filter_point/viz_out"/>
+		<remap from="~/pt_out" to="filter_point/closest_point_filtered"/>
+		<remap from="~/pt_piv_out" to="filter_point/closest_point_raw"/>
+		<remap from="~/twist_out" to="filter_point/rep_vec_out"/>
+    
+		<rosparam command="load" file="$(arg fp_config_path)/$(arg fore_fp_config)" subst_value="true"/>
+		<param name="base_frame_id" type="string" value="$(arg base_frame)"/>
+				
+	</node>
+  
+	<node unless="$(arg qmdp)" name="relay" pkg="topic_tools" type="relay"
+		args="filter_point/force_out /$(arg mav_name)/filter_point_control/rep_vec_in"/>
+  <node if="$(arg qmdp)" name="relay" pkg="topic_tools" type="relay"
+		args="filter_point/rep_vec_out /$(arg mav_name)/filter_point_control/rep_vec_in"/>
+  </group>
+
+	<!-- ...................... Path Following Controller .................... -->
+  <node name="filter_point_control" pkg="apf_pf" type="goal_to_vel_node" output="screen">
+    <rosparam command="load" file="$(arg fp_config_path)/$(arg fpc_config)" subst_value="true"/>
+		<param name="pose_frame_id" value="$(arg world_frame)"/>
+    <param name="base_frame_id" value="$(arg base_frame)"/>
+			
+		<remap from="~/pose_in" to="ground_truth/pose"/>
+    <remap from="~/path_in" to="scan_plan_node/path_out"/>
+			
+		<remap from="~/goal_pt_in" to="scan_plan_node/lookahead_out"/>	
 		<remap from="~/rep_vec_in" to="filter_point_control/rep_vec_in"/>
     
-		<remap from="~/twist_out" to="/A01/cmd_vel_stamped"/>
+		<remap from="~/twist_out" to="cmd_vel_stamped"/>
 	</node>
 
 	<node name="twist_to_twiststamped" pkg="ros_conversions" type="twist_to_twiststamped" output="screen">
 			<remap from="twist_to_twiststamped/twist_in" to="twist_to_twiststamped/twist_in"/>
-			<remap from="twist_to_twiststamped/twiststamped_in" to="/A01/cmd_vel_stamped"/>
+			<remap from="twist_to_twiststamped/twiststamped_in" to="cmd_vel_stamped"/>
 			
-			<remap from="twist_to_twiststamped/twist_out" to="/A01/cmd_vel"/>
+			<remap from="twist_to_twiststamped/twist_out" to="cmd_vel"/>
 			<remap from="twist_to_twiststamped/twiststamped_out" to="twist_to_twiststamped/twiststamped_out"/>
 			
-			<param name="frame_id" value="world"/>
+			<param name="frame_id" value="$(arg world_frame)"/>
 	</node>
 
+	<!-- ...................... Explored Volume .................... -->
   <node pkg="octomap_volume" type="octomap_volume" name="octomap_volume">
 		
-		<remap from="~/octomap_in" to="/fore/octomap_binary" /> 
+		<remap from="~/octomap_in" to="octomap_binary" /> 
 	
 	</node>
 
-  <include file="$(find scan_plan)/launch/octomap.launch"/>
-  <include file="$(find ros_conversions)/launch/tf_to_path.launch"/>
+  <!-- ...................... Octomap and Pose History .................... -->
+  <include file="$(find scan_plan)/launch/octomap.launch">
+    <arg name="up_cam_name" value="$(arg up_cam_name)"/>
+    <arg name="down_cam_name" value="$(arg down_cam_name)"/>
+    <arg name="mav_name" value="$(arg mav_name)"/>
+  </include>
+  <include file="$(find ros_conversions)/launch/tf_to_path.launch">
+    <arg name="mav_name" value="$(arg mav_name)"/>
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="base_frame" value="$(arg base_frame)"/>
+  </include>
 
 </launch>

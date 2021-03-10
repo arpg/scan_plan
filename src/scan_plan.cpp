@@ -250,6 +250,13 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
     else
       status_.mode = plan_status::MODE::GLOBALEXP;
   }
+
+  if( (taskMsg.data == "guiCommand" || taskMsg.data == "gui_command" || taskMsg.data == "guiCmd" || taskMsg.data == "gui_cmd") && status_.mode != plan_status::MODE::GOALPT )
+  {
+    status_.mode = plan_status::MODE::GOALPT;
+    timerReplan_.setPeriod(ros::Duration(0.1), true);
+  }
+  
 }
 
 // ***************************************************************************
@@ -722,8 +729,8 @@ void scan_plan::goal_cb(const geometry_msgs::PointStamped& goalMsg)
   status_.goalPt(1) = goalMsg.point.y;
   status_.goalPt(2) = goalMsg.point.z;
 
-  status_.mode = plan_status::MODE::GOALPT;
-  timerReplan_.setPeriod(ros::Duration(0.2), false); // don't reset the timer because the goal could be coming in at high frequency
+  //status_.mode = plan_status::MODE::GOALPT;
+  //timerReplan_.setPeriod(ros::Duration(0.2), false); // don't reset the timer because the goal could be coming in at high frequency
 }
 
 // ***************************************************************************

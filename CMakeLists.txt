@@ -3,6 +3,7 @@ project(scan_plan)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
+add_compile_options(-ffast-math -O3 -march=native -mfma -msse2 -mavx)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)

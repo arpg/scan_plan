@@ -136,7 +136,7 @@ void graph::publish_viz(ros::Publisher& vizPub)
   vertices.ns = "vertices";
   vertices.id = 0;
   vertices.type = visualization_msgs::Marker::SPHERE_LIST;
-  vertices.action = visualization_msgs::Marker::ADD;
+  vertices.action = visualization_msgs::Marker::MODIFY;
   vertices.pose.orientation.w = 1;
   geometry_msgs::Vector3 scale;
 	scale.x = 0.05;
