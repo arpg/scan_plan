@@ -22,7 +22,7 @@ min_man_dist_frontiers: 4.0
 entrance_min_bnds: [0, -50, -5]
 entrance_max_bnds: [10, 50, 30]
 
-time_interval_replan: 10.0
+time_interval_replan: 0.2
 
 esdf_max_dist: 5.0 # greater than robot radius
 esdf_unknown_as_occupied: true

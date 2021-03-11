@@ -127,19 +127,20 @@ public:
   void pose_hist_cb(const nav_msgs::Path& poseHistMsg);
   void task_cb(const std_msgs::String&);
 
-  Eigen::MatrixXd generate_local_exp_path(std::vector<int>& idLeaves, int& idPathLeaf);
+  Eigen::MatrixXd plan_locally();
   Eigen::MatrixXd plan_to_graph(const Eigen::Vector3d& fromPos, VertexDescriptor& toVertex);
   Eigen::MatrixXd plan_from_graph(const Eigen::Vector3d& toPos, VertexDescriptor& fromVertex);
 
   void update_explored_volume(const double& expVol);
 
-  Eigen::MatrixXd plan_path_to_point(const Eigen::Vector3d& goalPos);
-  Eigen::MatrixXd plan_global_exp_path();
+  Eigen::MatrixXd plan_to_point(const Eigen::Vector3d& goalPos);
+  Eigen::MatrixXd plan_globally();
   Eigen::MatrixXd plan_home();
   bool is_entrance(const Eigen::Vector3d& ptIn);
 
   void publish_plan_mode();
   void publish_can_plan(bool canPlan);
+  bool end_of_path();
   
 };
 

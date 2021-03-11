@@ -235,28 +235,63 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
 {
   if( (taskMsg.data == "report" || taskMsg.data == "Report" || taskMsg.data == "home" || taskMsg.data == "Home") && status_.mode != plan_status::MODE::REPORT )
   {
-    status_.mode = plan_status::MODE::REPORT;
-    timerReplan_.setPeriod(ros::Duration(0.1), true); // reset the timer
+    path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for computation
+
+    Eigen::MatrixXd minCstPath = plan_home(); // try planning home
+    if(minCstPath > 0) // path found
+    {
+      status_.mode = plan_status::MODE::REPORT;
+      minCstPath_ = minCstPath;
+      publish_can_plan(true);
+    }
+    else
+      publish_can_plan(false);
+    path_man::publish_path(minCstPath_, worldFrameId_, pathPub_); // publish path if found, otherwise publish older path and don't change mode
   }
 
   if( (taskMsg.data == "explore" || taskMsg.data == "Explore") && (status_.mode != plan_status::MODE::LOCALEXP || status_.mode != plan_status::MODE::GLOBALEXP) )
   {
     if(status_.mode = plan_status::MODE::REPORT) // if transitioning from report mode, then flip the path so the robot goes back to where it came from
     {
+      status_.mode = plan_status::MODE::GLOBALEXP;
       minCstPath_.colwise().reverseInPlace();
       path_man::publish_path(minCstPath_, worldFrameId_, pathPub_);
-      timerReplan_.setPeriod(ros::Duration(5*60), true); // wait for end-of-path
     }
-    else
-      status_.mode = plan_status::MODE::GLOBALEXP;
+    else 
+    {
+      status_.mode = plan_status::MODE::LOCALEXP;
+      Eigen::MatrixXd minCstPath = plan_locally();
+
+      if(minCstPath > 0)  // if local path is found publish it, otherwise leave in local exp mode so the timer retries and figures it out
+      {
+        minCstPath_ = minCstPath;
+        path_man::publish_path(minCstPath_, worldFrameId_, pathPub_);
+      }
+      else
+      {
+        minCstPath_ = Eigen::MatrixXd(0,0); // because timer retries at the end-of-path
+        path_man::publish_empty_path(worldFrameId_, pathPub_); 
+      }
+    }
+
   }
 
+  //TODO: right now it only replans to the goal point if the mode changes but what if it's already in goal point mode and the goal point changes 
   if( (taskMsg.data == "guiCommand" || taskMsg.data == "gui_command" || taskMsg.data == "guiCmd" || taskMsg.data == "gui_cmd") && status_.mode != plan_status::MODE::GOALPT )
-  {
-    status_.mode = plan_status::MODE::GOALPT;
-    timerReplan_.setPeriod(ros::Duration(0.1), true);
+  {  
+    path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for computation
+    Eigen::MatrixXd minCstPath = plan_to_point(status_.goalPt);
+
+    if(minCstPath > 0)
+    {
+      status_.mode = plan_status::MODE::GOALPT;
+      minCstPath_ = minCstPath;
+      publish_can_plan(true);
+    }
+    else
+      publish_can_plan(false);
+    path_man::publish_path(minCstPath_, worldFrameId_, pathPub_); // publish path if found, otherwise publish older path and don't change mode
   }
-  
 }
 
 // ***************************************************************************
@@ -267,7 +302,7 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   octomap::AbstractOcTree* tree = octomap_msgs::msgToMap(octmpMsg);
   octomap::OcTree* octTree = dynamic_cast<octomap::OcTree*>(tree);
 
-  publish_plan_mode();
+  //publish_plan_mode();
 
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
@@ -276,15 +311,15 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   octMan_->update_esdf(localBndsMin_+robPos, localBndsMax_+robPos);
   octMan_->update_robot_pos(robPos);
 
-  std::cout << "Checking for End-of-Path" << std::endl;
-  if( (minCstPath_.rows() > 0) && ( (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) )
-  {
-    std::cout << "End-of-Path: " << (robPos.transpose()-minCstPath_.bottomRows(1)).norm() << std::endl;
-    status_.mode = plan_status::MODE::LOCALEXP;
-    timerReplan_.setPeriod(ros::Duration(0.2), true);
-  }
+  //std::cout << "Checking for End-of-Path" << std::endl;
+  //if( (minCstPath_.rows() > 0) && ( (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) )
+  //{
+  //  std::cout << "End-of-Path: " << (robPos.transpose()-minCstPath_.bottomRows(1)).norm() << std::endl;
+  //  status_.mode = plan_status::MODE::LOCALEXP;
+   // timerReplan_.setPeriod(ros::Duration(0.2), true);
+  //}
 
-  std::cout << "Validating path" << std::endl;
+  //std::cout << "Validating path" << std::endl;
   //status_.changeDetected_ = !( pathMan_->validate_path(minCstPath_) );
   //pathMan_->publish_path(minCstPath_, worldFrameId_, pathPub_);
   //if(status_.changeDetected_ && status_.mode != plan_status::MODE::LOCALEXP)
@@ -293,27 +328,26 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   //  timerReplan_.setPeriod(ros::Duration(0.5), true);
   //}
 
-  if( status_.mode == plan_status::MODE::LOCALEXP && (ros::Time::now() - status_.volExpStamp).toSec() > volGainMonitorDur_ ) 
-  {
+  //if( status_.mode == plan_status::MODE::LOCALEXP && (ros::Time::now() - status_.volExpStamp).toSec() > volGainMonitorDur_ ) 
+  //{
     // if locally exploring, update every volGainMonitorDur_ sec and check for a drop
 
-    double volExp = octTree->getNumLeafNodes() * pow(octmpMsg.resolution,3);
-    std::cout << "Updating volumetric gain, locally exploring: " << (volExp - status_.volExp) << std::endl;
+    //double volExp = octTree->getNumLeafNodes() * pow(octmpMsg.resolution,3);
+    //std::cout << "Updating volumetric gain, locally exploring: " << (volExp - status_.volExp) << std::endl;
 
-    //if( (volExp - status_.volExp) < minVolGainLocalPlan_ && octMan_->volumetric_gain(minCstPath_.bottomRows(1).transpose()) < minVolGainLocalPlan_ )
-    if( minCstPath_.rows() > 0 && octMan_->volumetric_gain(minCstPath_.bottomRows(1).transpose()) < 5.0)
-    {
-      status_.mode = plan_status::MODE::GLOBALEXP;
-      timerReplan_.setPeriod(ros::Duration(0.2), true);
-    }
+    //if( minCstPath_.rows() > 0 && octMan_->volumetric_gain(minCstPath_.bottomRows(1).transpose()) < 5.0)
+    //{
+    //  status_.mode = plan_status::MODE::GLOBALEXP;
+    //  timerReplan_.setPeriod(ros::Duration(0.2), true);
+    //}
 
-    update_explored_volume(volExp);
-  }
-  else if(status_.mode != plan_status::MODE::LOCALEXP) // if not locally exploring, update volumetric gain frequently to start monitoring when it does start locally exploring
-  {
-    std::cout << "Updating volumetric gain, not locally exploring" << std::endl;
-    update_explored_volume(octTree->getNumLeafNodes() * pow(octmpMsg.resolution,3));
-  }
+    //update_explored_volume(volExp);
+  //}
+  //else if(status_.mode != plan_status::MODE::LOCALEXP) // if not locally exploring, update volumetric gain frequently to start monitoring when it does start locally exploring
+  //{
+   // std::cout << "Updating volumetric gain, not locally exploring" << std::endl;
+   // update_explored_volume(octTree->getNumLeafNodes() * pow(octmpMsg.resolution,3));
+  //}
 
   if( (isInitialized_ & 0x01) != 0x01 )
   {
@@ -324,108 +358,70 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 }
 
 // ***************************************************************************
-void scan_plan::timer_replan_cb(const ros::TimerEvent&)
+bool scan_plan::end_of_path()
+{
+  update_base_to_world();
+  Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
+  octMan_->update_robot_pos(robPos);
+
+  if(minCstPath_.rows() < 1) // if no valid path
+    return true;
+  if( (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) // if the robot is near the end point of the path
+    return true;
+
+  return false;
+}
+
+// ***************************************************************************
+void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rate
 {
   if( (isInitialized_ & 0x03) != 0x03 )
     return;
 
   ros::Time timeS = ros::Time::now();
+  //update_base_to_world();
+  //Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
 
-  switch(status_.mode)
+  //TODO: Add goal point to graph while planning to a goal point because the mode switches to local so if the goal point is far from graph, connectivity might be a prob
+  //TODO: Add vehicle not moving and map change detections logic
+
+  if(status_.mode == plan_status::MODE::REPORT && end_of_path())
   {
-    case plan_status::MODE::REPORT:
+    status_.mode == plan_status::MODE::GLOBALEXP;
+    Eigen::MatrixXd minCstPath = plan_globally(); // vehicle already stopped for computation due to EOP
+    if(minCstPath.rows() > 0) // global path found
+      minCstPath_ = minCstPath;
+  }
+  else if(status_.mode == plan_status::MODE::GOALPT && end_of_path())
+  {
+    status_.mode == plan_status::MODE::LOCALEXP;
+    Eigen::MatrixXd minCstPath = plan_locally();
+    if(minCstPath.rows() > 0) // local path found
+      minCstPath_ = minCstPath;
+  }
+  else if(status_.mode == plan_status::MODE::GLOBALEXP && end_of_path())
+  {
+    status_.mode == plan_status::MODE::LOCALEXP;
+    Eigen::MatrixXd minCstPath = plan_locally();
+    if(minCstPath.rows() > 0) // local path found
+      minCstPath_ = minCstPath;
+  }
+  else if(status_.mode == plan_status::MODE::LOCALEXP && end_of_path())
+  {
+    status_.mode == plan_status::MODE::LOCALEXP;
+    Eigen::MatrixXd minCstPath = plan_locally();
+
+    if(minCstPath.rows() > 0 && octMan_->volumetric_gain(minCstPath.bottomRows(1).transpose()) >= 5.0) // local path found and vol gain is good enough
+      minCstPath_ = minCstPath;
+
+    else if(minCstPath.rows() > 0 && octMan_->volumetric_gain(minCstPath.bottomRows(1).transpose()) < 5.0) // local path found but vol gain is low
     {
-      std::cout << "Going home to report" << std::endl;
-      path_man::publish_empty_path(worldFrameId_, pathPub_);
-
-      Eigen::MatrixXd minCstPath = plan_home();
-      if(minCstPath.rows() > 1) // path found
-      {
-        std::cout << "Path to home found" << std::endl;
+      status_.mode == plan_status::MODE::GLOBALEXP;
+      Eigen::MatrixXd minCstPath = plan_globally(); // vehicle already stopped for computation due to EOP
+      if(minCstPath.rows() > 0) // global path found
         minCstPath_ = minCstPath;
-        timerReplan_.setPeriod(ros::Duration(5*60), true); // replan timer set to a large value, hoping the end-of-path or change detection will trigger replanning  TODO: make duration a parameter
-        publish_can_plan(true);
-      }
-      else
-      {
-        std::cout << "Path to point not found" << std::endl;
-        status_.mode = plan_status::MODE::LOCALEXP;
-        timerReplan_.setPeriod(ros::Duration(timeIntReplan_), true);
-        publish_can_plan(false);
-      }
-
-      break;
-    }
-    case plan_status::MODE::GOALPT:
-    {
-      std::cout << "Planning to the goal point" << std::endl;
-      path_man::publish_empty_path(worldFrameId_, pathPub_);
-      Eigen::MatrixXd minCstPath = plan_path_to_point(status_.goalPt);
-      if(minCstPath.rows() > 1) // path found
-      {
-        std::cout << "Path to point found" << std::endl;
-        minCstPath_ = minCstPath;
-        timerReplan_.setPeriod(ros::Duration(5*60), true); // replan timer set to a large value, hoping the end-of-path or change detection will trigger replanning  TODO: make duration a parameter
-        publish_can_plan(true);
-      }
-      else
-      {
-        std::cout << "Path to point not found" << std::endl;
-        status_.mode = plan_status::MODE::LOCALEXP;
-        timerReplan_.setPeriod(ros::Duration(timeIntReplan_), true);
-        publish_can_plan(false);
-      }
-      break;
-    }
-    case plan_status::MODE::GLOBALEXP:
-    {
-      std::cout << "Planning to a frontier" << std::endl;
-      path_man::publish_empty_path(worldFrameId_, pathPub_);
-      Eigen::MatrixXd minCstPath = plan_global_exp_path();
-      if(minCstPath.rows() > 1) // path found
-      {
-        std::cout << "Path to frontier found" << std::endl;
-        minCstPath_ = minCstPath;
-        timerReplan_.setPeriod(ros::Duration(5*60), true); // replan timer set to a large value, hoping the end-of-path or change detection will trigger replanning  TODO: make duration a parameter
-      }
-      else
-      {
-        std::cout << "Path to frontier not found" << std::endl;
-        status_.mode = plan_status::MODE::LOCALEXP;
-        timerReplan_.setPeriod(ros::Duration(timeIntReplan_), false); // if no global path is found, immidiately plan locally
-      }
-      publish_can_plan(true);
-      break;
-    }
-
-    case plan_status::MODE::LOCALEXP:
-    {
-      std::cout << "Exploring locally" << std::endl;
-      std::vector<int> idLeaves;
-      int idPathLeaf;
-      Eigen::MatrixXd minCstPath = generate_local_exp_path(idLeaves, idPathLeaf);
-
-      if( minCstPath.rows() > 1 ) // path found
-      {
-        minCstPath_ = minCstPath;
-        std::cout << "Adding paths to the graph" << std::endl;
-        timerReplan_.setPeriod(ros::Duration(timeIntReplan_), true); // don't reset timer
-        bool success = add_paths_to_graph(rrtTree_, idLeaves, idPathLeaf, graph_);
-        if(!success)
-          ROS_WARN("%s: Graph connection unsuccessful", nh_->getNamespace().c_str());
-      }
-      else
-        timerReplan_.setPeriod(ros::Duration(0.2), true); // don't reset timer, immidiately replan again
-
-      rrtTree_->publish_viz(vizPub_,worldFrameId_,idLeaves);
-      publish_can_plan(true);
-      break;
-    }
-
-      default:
-      {
-      }
-  };
+    }    
+  }
 
   //TODO: Generate graph diconnect warning if no path is successfully added to the graph
   // Only add node to the graph if there is no existing node closer than radRob in graph lib, return success in that case since the graph is likely to be connected fine
@@ -437,6 +433,11 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&)
   ///graph_->update_frontiers_vol_gain();
    
   ros::Duration timeE = ros::Time::now() - timeS;
+
+  //rrtTree_->publish_viz(vizPub_,worldFrameId_,idLeaves);
+
+  std::cout << "Publishing plan mode" << std::endl;
+  publish_plan_mode();
 
   std::cout << "Publishing lookahead path" << std::endl;
   path_man::publish_path(minCstPath_, worldFrameId_, pathPub_);
@@ -459,6 +460,7 @@ Eigen::MatrixXd scan_plan::plan_home()
 {
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
+  octMan_->update_robot_pos(robPos);
 
   std::cout << "Planning to graph" << std::endl;
   VertexDescriptor vertD1;
@@ -478,10 +480,11 @@ Eigen::MatrixXd scan_plan::plan_home()
 }
 
 // ***************************************************************************
-Eigen::MatrixXd scan_plan::plan_path_to_point(const Eigen::Vector3d& goalPos)
+Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
 {
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
+  octMan_->update_robot_pos(robPos);
 
   std::cout << "Checking if goal and robot positions are different" << std::endl;
   if(goalPos == robPos) // if goal and robot pos is same
@@ -593,7 +596,7 @@ Eigen::MatrixXd scan_plan::plan_to_graph(const Eigen::Vector3d& fromPos, VertexD
 }
 
 // ***************************************************************************
-Eigen::MatrixXd scan_plan::plan_global_exp_path() 
+Eigen::MatrixXd scan_plan::plan_globally() 
 {
   graph_->update_frontiers_vol_gain();
   frontier front = graph_->get_best_frontier();
@@ -605,6 +608,7 @@ Eigen::MatrixXd scan_plan::plan_global_exp_path()
 
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
+  octMan_->update_robot_pos(robPos);
 
   std::cout << "Planning to graph" << std::endl;
   VertexDescriptor vertD1;
@@ -630,16 +634,18 @@ Eigen::MatrixXd scan_plan::plan_global_exp_path()
 }
 
 // ***************************************************************************
-Eigen::MatrixXd scan_plan::generate_local_exp_path(std::vector<int>& idLeaves, int& idPathLeaf) 
+Eigen::MatrixXd scan_plan::plan_locally() 
 {
   // returns rrt lookahead path, ids of all leaves and of the lookahead path leaf
   // get_path function in rrt can be used to get paths for a leaf id
 
   Eigen::MatrixXd minCstPath(0,0);
+  std::vector<int> idLeaves;
+  int idPathLeaf;
 
   update_base_to_world();
-
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
+  octMan_->update_robot_pos(robPos);
 
   rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
   rrtTree_->build(robPos);
@@ -675,6 +681,14 @@ Eigen::MatrixXd scan_plan::generate_local_exp_path(std::vector<int>& idLeaves, i
   } 
 
   //std::cout << std::endl;
+
+  if( minCstPath.rows() > 1 )
+  {
+    std::cout << "Adding paths to the graph" << std::endl;
+    bool success = add_paths_to_graph(rrtTree_, idLeaves, idPathLeaf, graph_);
+    if(!success)
+      ROS_WARN("%s: Graph connection unsuccessful", nh_->getNamespace().c_str());
+  }
 
   return minCstPath;
 }

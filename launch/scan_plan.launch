@@ -45,8 +45,8 @@
   <!-- ..................... Depth Image to PtCloud ............................... -->
 
   <include if="$(arg launch_depth_to_cloud)" ns="$(arg fore_cam_name)" file="$(find apf_pf)/launch/depth_to_cloud.launch">
-   <arg name="cam_info_topic" value="/$(arg mav_name)/$(arg fore_cam_name)/camera_info"/>
-   <arg name="depth_img_topic" value="/$(arg mav_name)/$(arg fore_cam_name)/depth"/>
+   <arg name="cam_info_topic" value="/$(arg mav_name)/$(arg fore_cam_name)/optical/camera_info"/>
+   <arg name="depth_img_topic" value="/$(arg mav_name)/$(arg fore_cam_name)/optical/depth"/>
    <arg name="pt_cloud_topic" value="/$(arg mav_name)/$(arg fore_cam_name)/depth/points_clipped"/>
   </include>
 
