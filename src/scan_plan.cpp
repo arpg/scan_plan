@@ -155,7 +155,7 @@ void scan_plan::setup_octomap()
   ROS_INFO("%s: Waiting for octomap params ...", nh_->getNamespace().c_str());
 
   std::string vehicleType;
-  double maxGroundRoughness, maxGroundStep, maxDistEsdf, groundPlaneSearchDist;
+  double maxGroundRoughness, maxGroundStep, maxDistEsdf, groundPlaneSearchDist, baseFrameHeightAboveGround;
   bool esdfUnknownAsOccupied;
 
   while(!nh_->getParam("esdf_max_dist", maxDistEsdf));
@@ -165,9 +165,11 @@ void scan_plan::setup_octomap()
   while(!nh_->getParam("max_ground_roughness", maxGroundRoughness)); // [0, 180], angle from postive z
   while(!nh_->getParam("max_ground_step", maxGroundStep)); // [epsilon,inf]
   while(!nh_->getParam("ground_plane_search_distance", groundPlaneSearchDist));
+  while(!nh_->getParam("base_frame_height_above_ground", baseFrameHeightAboveGround));
+  
 
   ROS_INFO("%s: Setting up octomap manager ...", nh_->getNamespace().c_str());
-  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, vehicleType, radRob_, maxGroundRoughness*(pi_/180), maxGroundStep, groundPlaneSearchDist, mapSensors_);
+  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, vehicleType, radRob_, maxGroundRoughness*(pi_/180), maxGroundStep, groundPlaneSearchDist, mapSensors_, baseFrameHeightAboveGround);
 }
 
 // ***************************************************************************

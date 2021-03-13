@@ -64,6 +64,10 @@
 		<remap from="~/twist_out" to="filter_point/rep_vec_out"/>
     
 		<rosparam command="load" file="$(arg fp_config_path)/$(arg fore_fp_config)" subst_value="true"/>
+    <rosparam param="max_action_values"> [0.0, 1.0, 1.0] </rosparam>
+    <rosparam param="min_action_values"> [-1.0, -1.0, -1.0] </rosparam> 
+    <rosparam param="action_intervals"> [0.25, 0.25, 0.25] </rosparam>
+
 		<param name="base_frame_id" type="string" value="$(arg base_frame)"/>
 				
 	</node>
@@ -77,6 +81,8 @@
 	<!-- ...................... Path Following Controller .................... -->
   <node name="filter_point_control" pkg="apf_pf" type="goal_to_vel_node" output="screen">
     <rosparam command="load" file="$(arg fp_config_path)/$(arg fpc_config)" subst_value="true"/>
+    <rosparam param="att_vel"> [0.8, 0.8, 1.3] </rosparam>
+
 		<param name="pose_frame_id" value="$(arg world_frame)"/>
     <param name="base_frame_id" value="$(arg base_frame)"/>
 			
@@ -100,11 +106,11 @@
 	</node>
 
 	<!-- ...................... Explored Volume .................... -->
-  <node pkg="octomap_volume" type="octomap_volume" name="octomap_volume">
+  <!-- node pkg="octomap_volume" type="octomap_volume" name="octomap_volume">
 		
 		<remap from="~/octomap_in" to="octomap_binary" /> 
 	
-	</node>
+	</node -->
 
   <!-- ...................... Octomap and Pose History .................... -->
   <include file="$(find scan_plan)/launch/octomap.launch">

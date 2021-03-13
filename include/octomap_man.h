@@ -33,12 +33,15 @@ private:
   Eigen::Vector3d robPos_;
 
   bool isInitialized_ = false;
+  double baseFrameHeightAboveGround_;
  
 public:
   ~octomap_man();
-  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors);
+  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double);
 
   double volumetric_gain(const Eigen::Vector3d& basePos);
+  double volumetric_gain_ground(const Eigen::Vector3d&);
+  double volumetric_gain_air(const Eigen::Vector3d&);
   bool u_coll(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);
   bool u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);
   bool u_coll_air(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);

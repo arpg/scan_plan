@@ -1,7 +1,7 @@
 #include "octomap_man.h"
 
 // ***************************************************************************
-octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors)
+octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround)
 {
   maxDistEsdf_ = maxDistEsdf;
   esdfUnknownAsOccupied_ = esdfUnknownAsOccupied;
@@ -10,13 +10,24 @@ octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::st
   maxGroundRoughness_ = maxGroundRoughness;
   maxGroundStep_ = maxGroundStep;
   groundPlaneSearchDist_ = groundPlaneSearchDist;
+  baseFrameHeightAboveGround_ = baseFrameHeightAboveGround;
 
   mapSensors_ = mapSensors;
 
   isInitialized_ = false; // wait for the first octree to set this to true
 }
+
 // ***************************************************************************
 double octomap_man::volumetric_gain(const Eigen::Vector3d& basePos)
+{
+  if(vehicleType_ == "air")
+    return volumetric_gain_air(basePos);
+  else
+    return volumetric_gain_ground(basePos);
+} 
+
+// ***************************************************************************
+double octomap_man::volumetric_gain_air(const Eigen::Vector3d& basePos)
 {
   //std::cout << "Calculating volumetric gain at : " << basePos.transpose() <<std::endl;
   //std::cout << "Number of sensors : " << mapSensors_.size() <<std::endl;
@@ -26,6 +37,28 @@ double octomap_man::volumetric_gain(const Eigen::Vector3d& basePos)
     volGain += mapSensors_[i].volumetric_gain(octTree_, basePos);
 
  // std::cout << "Volumetric gain of all sensors : " << volGain <<std::endl;
+  return volGain;
+}
+
+// ***************************************************************************
+double octomap_man::volumetric_gain_ground(const Eigen::Vector3d& basePos)
+{
+  //std::cout << "Calculating volumetric gain at : " << basePos.transpose() <<std::endl;
+  //std::cout << "Number of sensors : " << mapSensors_.size() <<std::endl;
+ 
+  double volGain = 0;
+
+  Eigen::Vector3d groundPt;
+  double roughness;
+  if( !u_coll_ground(basePos, roughness, groundPt) )
+  {
+    double basePosHeight = groundPt(2) + baseFrameHeightAboveGround_; // project the 3d point to ground to calculate vol gain
+
+    for(int i=0; i<mapSensors_.size(); i++)
+      volGain += mapSensors_[i].volumetric_gain( octTree_, Eigen::Vector3d(basePos(0), basePos(1), basePosHeight) );
+  } 
+
+  // std::cout << "Volumetric gain of all sensors : " << volGain <<std::endl;
   return volGain;
 }
 
