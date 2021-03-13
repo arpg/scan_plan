@@ -98,6 +98,7 @@ private:
 
   double volGainMonitorDur_; // secs
   double minVolGainLocalPlan_;
+  int nTriesLocalPlan_;
 
   double endOfPathSuccRad_;
 
@@ -141,6 +142,11 @@ public:
   void publish_plan_mode();
   void publish_can_plan(bool canPlan);
   bool end_of_path();
+
+  double path_cost_alpha(const Eigen::MatrixXd&, const double&, const double&);
+  double path_cost_beta(const Eigen::MatrixXd&, const double&, const double&, double&);
+  Eigen::MatrixXd plan_locally(const std::string& costType, const int& nTries);
+  Eigen::MatrixXd plan_locally(const std::string&);
   
 };
 

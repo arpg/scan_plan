@@ -79,7 +79,7 @@ public:
   void plot_path(Eigen::MatrixXd);
   void set_bounds(const Eigen::Vector3d&, const Eigen::Vector3d&);
   double get_del_dist();
-  void publish_viz(ros::Publisher&, std::string, std::vector<int>&);
+  void publish_viz(ros::Publisher&, std::string);
 };
 
 #endif

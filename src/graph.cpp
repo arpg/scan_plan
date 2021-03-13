@@ -2,7 +2,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax)
+graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax, const std::vector<double>& cGain)
 {
   adjList_ = new BiDirectionalGraph;
 
@@ -22,6 +22,7 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double 
   frameId_ = frameId;
   minVolGain_ = minVolGain;
   minManDistFrontier_ = minManDistFrontier;
+  cGain_ = cGain;
 
   entranceMin_ = Eigen::Vector3d(entranceMin[0], entranceMin[1], entranceMin[2]);
   entranceMax_ = Eigen::Vector3d(entranceMax[0], entranceMax[1], entranceMax[2]);
@@ -390,7 +391,7 @@ Eigen::MatrixXd graph::plan_shortest_path(const VertexDescriptor& fromVertex, co
 }
 
 // ***************************************************************************
-frontier graph::get_best_frontier() // returns frontier with <= 0 volGain if none found
+frontier graph::get_best_frontier(const Eigen::Vector3d& robPos) // returns frontier with <= 0 volGain if none found
 {
   if(frontiers_.empty())
   {
@@ -405,7 +406,7 @@ frontier graph::get_best_frontier() // returns frontier with <= 0 volGain if non
   std::cout << "Num Frontiers: " <<  sz << std::endl;
 
   frontier bestFront = frontiers_.front(); // initialize with first frontier
-  double bestCost = bestFront.volGain; // initialize min cost with first 
+  double bestCost = frontier_cost_alpha(bestFront, robPos); // initialize min cost with first 
 
   int n = -1;
   for(frontier& front: frontiers_)
@@ -413,14 +414,20 @@ frontier graph::get_best_frontier() // returns frontier with <= 0 volGain if non
     if(n++ < 1)
       continue;
     
-    if( (front.volGain > bestCost))
+    if( (front.volGain < bestCost))
     {
       bestFront = front;
-      bestCost = front.volGain;
+      bestCost = frontier_cost_alpha(front, robPos);
     }
   }
 
   return bestFront;
+}
+
+// ***************************************************************************
+double graph::frontier_cost_alpha(const frontier& frontIn, const Eigen::Vector3d& robPos)
+{
+  return cGain_[0]*(robPos-get_pos(frontIn.vertDesc)).lpNorm<1>() - cGain_[1]*frontIn.volGain; 
 }
 
 // ***************************************************************************
@@ -444,6 +451,12 @@ bool graph::is_entrance(const Eigen::Vector3d& ptIn)
     return true;
 
   return false;
+}
+
+// ***************************************************************************
+bool graph::is_empty_frontiers()
+{
+  return frontiers_.empty();
 }
 
 // ***************************************************************************

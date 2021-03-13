@@ -18,14 +18,14 @@ octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::st
 // ***************************************************************************
 double octomap_man::volumetric_gain(const Eigen::Vector3d& basePos)
 {
-  std::cout << "Calculating volumetric gain at : " << basePos.transpose() <<std::endl;
-  std::cout << "Number of sensors : " << mapSensors_.size() <<std::endl;
+  //std::cout << "Calculating volumetric gain at : " << basePos.transpose() <<std::endl;
+  //std::cout << "Number of sensors : " << mapSensors_.size() <<std::endl;
 
   double volGain = 0;
   for(int i=0; i<mapSensors_.size(); i++)
     volGain += mapSensors_[i].volumetric_gain(octTree_, basePos);
 
-  std::cout << "Volumetric gain of all sensors : " << volGain <<std::endl;
+ // std::cout << "Volumetric gain of all sensors : " << volGain <<std::endl;
   return volGain;
 }
 

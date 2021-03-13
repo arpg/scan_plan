@@ -386,8 +386,10 @@ void rrt::plot_path(Eigen::MatrixXd path)
   matplotlibcpp::show(false);
 }
 // ***************************************************************************
-void rrt::publish_viz(ros::Publisher& vizPub, std::string frameId, std::vector<int>& idLeaves)
+void rrt::publish_viz(ros::Publisher& vizPub, std::string frameId)
 {
+  std::vector<int> idLeaves = get_leaves();
+
   visualization_msgs::Marker tree;
   tree.header.frame_id = frameId;
   tree.header.stamp = ros::Time::now();
