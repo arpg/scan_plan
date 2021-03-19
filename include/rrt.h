@@ -11,7 +11,6 @@
 #include "disp.h"
 
 #include "dynamicEDT3D/dynamicEDTOctomap.h"
-#include "matplotlib-cpp/matplotlibcpp.h"
 
 #include "ros/ros.h"
 #include "visualization_msgs/MarkerArray.h"

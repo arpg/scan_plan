@@ -34,6 +34,7 @@ robot_radius: 0.7
 max_ground_roughness: 60 # angle from positive z (radians)
 max_ground_step: 0.85 # greater than octomap resolution
 ground_plane_search_distance: 1.0
+base_frame_height_above_ground: 0.5
 
 admissible_min_path_length: 5
 path_cost_gains: [3.5, 1.0, 0.5, 0.2] # pose history distance, exploration heading, exploration height, volumetric gain

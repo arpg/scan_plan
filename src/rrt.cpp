@@ -352,38 +352,38 @@ void rrt::print_tree()
 // ***************************************************************************
 void rrt::plot_tree()
 {
-  matplotlibcpp::show();
+  //matplotlibcpp::show();
 
-  std::vector<double> vecX(2);
-  std::vector<double> vecY(2);
+  //std::vector<double> vecX(2);
+  //std::vector<double> vecY(2);
 
-  for (int i=0; i<actNds_; i++)
-  {
-    vecX[0] = posNds_(idPrnts_[i],0); vecX[1] = posNds_(i,0);
-    vecY[0] = posNds_(idPrnts_[i],1); vecY[1] = posNds_(i,1);
+  //for (int i=0; i<actNds_; i++)
+  //{
+  //  vecX[0] = posNds_(idPrnts_[i],0); vecX[1] = posNds_(i,0);
+  //  vecY[0] = posNds_(idPrnts_[i],1); vecY[1] = posNds_(i,1);
 
-    matplotlibcpp::plot(vecX,vecY, "b--");
-  }
+  //  matplotlibcpp::plot(vecX,vecY, "b--");
+  //}
 
-  matplotlibcpp::xlim(minBnds_[0], maxBnds_[0]);
-	matplotlibcpp::ylim(minBnds_[1], maxBnds_[1]);
+ // matplotlibcpp::xlim(minBnds_[0], maxBnds_[0]);
+	//matplotlibcpp::ylim(minBnds_[1], maxBnds_[1]);
 
-  matplotlibcpp::show(false);
+ // matplotlibcpp::show(false);
 	
 }
 // ***************************************************************************
 void rrt::plot_path(Eigen::MatrixXd path)
 {
-  std::vector<double> vecX(2);
-  std::vector<double> vecY(2);
-  for (int i=0; i<(path.rows()-1); i++)
-  {
-    vecX[0] = path(i,0); vecX[1] = path(i+1,0);
-    vecY[0] = path(i,1); vecY[1] = path(i+1,1);
+  //std::vector<double> vecX(2);
+  //std::vector<double> vecY(2);
+  //for (int i=0; i<(path.rows()-1); i++)
+  //{
+  //  vecX[0] = path(i,0); vecX[1] = path(i+1,0);
+   // vecY[0] = path(i,1); vecY[1] = path(i+1,1);
 
-    matplotlibcpp::plot(vecX,vecY, "r");
-  }
-  matplotlibcpp::show(false);
+  //  matplotlibcpp::plot(vecX,vecY, "r");
+  //}
+  //matplotlibcpp::show(false);
 }
 // ***************************************************************************
 void rrt::publish_viz(ros::Publisher& vizPub, std::string frameId)

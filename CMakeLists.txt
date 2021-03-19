@@ -129,11 +129,9 @@ catkin_package(
 ## Your package locations should be listed before other locations
 include_directories(
   include
-  /usr/local/openGJK
   ${Boost_INCLUDE_DIRS}
   ${OCTOMAP_INCLUDE_DIRS}
   ${DYNAMICEDT3D_INCLUDE_DIRS}
-  #/home/shakeeb/octomap/dynamicEDT3D/include
   ${catkin_INCLUDE_DIRS}
   ${PYTHON_INCLUDE_DIRS}
 )
