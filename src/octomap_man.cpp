@@ -20,15 +20,6 @@ octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::st
 // ***************************************************************************
 double octomap_man::volumetric_gain(const Eigen::Vector3d& basePos)
 {
-  if(vehicleType_ == "air")
-    return volumetric_gain_air(basePos);
-  else
-    return volumetric_gain_ground(basePos);
-} 
-
-// ***************************************************************************
-double octomap_man::volumetric_gain_air(const Eigen::Vector3d& basePos)
-{
   //std::cout << "Calculating volumetric gain at : " << basePos.transpose() <<std::endl;
   //std::cout << "Number of sensors : " << mapSensors_.size() <<std::endl;
 
@@ -37,28 +28,6 @@ double octomap_man::volumetric_gain_air(const Eigen::Vector3d& basePos)
     volGain += mapSensors_[i].volumetric_gain(octTree_, basePos);
 
  // std::cout << "Volumetric gain of all sensors : " << volGain <<std::endl;
-  return volGain;
-}
-
-// ***************************************************************************
-double octomap_man::volumetric_gain_ground(const Eigen::Vector3d& basePos)
-{
-  //std::cout << "Calculating volumetric gain at : " << basePos.transpose() <<std::endl;
-  //std::cout << "Number of sensors : " << mapSensors_.size() <<std::endl;
- 
-  double volGain = 0;
-
-  Eigen::Vector3d groundPt;
-  double roughness;
-  if( !u_coll_ground(basePos, roughness, groundPt) )
-  {
-    double basePosHeight = groundPt(2) + baseFrameHeightAboveGround_; // project the 3d point to ground to calculate vol gain
-
-    for(int i=0; i<mapSensors_.size(); i++)
-      volGain += mapSensors_[i].volumetric_gain( octTree_, Eigen::Vector3d(basePos(0), basePos(1), basePosHeight) );
-  } 
-
-  // std::cout << "Volumetric gain of all sensors : " << volGain <<std::endl;
   return volGain;
 }
 
@@ -74,32 +43,22 @@ bool octomap_man::u_coll(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos
 // ***************************************************************************
 bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
 {
-  const double delLambda = octTree_->getResolution() / (pos2 - pos1).norm();
+  const double delLambda = octTree_->getResolution() / (pos2 - pos1).norm(); // projection surfaces should overlap so a thin wall below a path is not missed
 
   double lambda = 0;
   Eigen::Vector3d pos;
 
-  double groundRoughness;
-  Eigen::Vector3d groundPt = pos1;
-  Eigen::Vector3d lastGroundPt = pos1;
   while(lambda <= 1)
   {
     pos = (1-lambda)*pos1 + lambda*pos2; 
 
-    if ( u_coll(pos, groundRoughness, groundPt) )
-      return true;
-    if ( abs(groundPt(2) - lastGroundPt(2)) > maxGroundStep_ )
-    {
-      std::cout << "Large ground step" << abs(groundPt(2) - lastGroundPt(2)) << std::endl;
-      return true;
-    }
-
-    lastGroundPt = groundPt;
+    if ( u_coll(pos) )
+      return true; // under-collision
 
     lambda += delLambda;
   }
 
-  return false;
+  return false; // collision-free
 }
 
 // ***************************************************************************
@@ -125,23 +84,35 @@ bool octomap_man::u_coll_air(const Eigen::Vector3d& pos1, const Eigen::Vector3d&
 }
 
 // ***************************************************************************
+bool octomap_man::u_coll_with_update(Eigen::Vector3d& pos)
+{
+  if(vehicleType_ == "air")
+    return u_coll_air(pos); // assuming u_coll_air doesnt change the argument
+  else
+  {
+    Eigen::Vector3d avgGroundPt;
+    bool returnStatus = cast_pos_down(pos, avgGroundPt);
+
+    if(returnStatus) // if successful projection
+    {
+      pos = avgGroundPt;
+      pos(2) += baseFrameHeightAboveGround_;
+    }
+
+    return !returnStatus; // successful projection means NOT under-collision
+  }
+}
+
+// ***************************************************************************
 bool octomap_man::u_coll(const Eigen::Vector3d& pos)
 {
-  double groundRoughness;
-  Eigen::Vector3d groundPt;
-
-  return u_coll(pos, groundRoughness, groundPt);
-}
-// ***************************************************************************
-bool octomap_man::u_coll(const Eigen::Vector3d& pos, double& groundRoughness, Eigen::Vector3d& groundPt)
-{
-  groundRoughness = 0;
-  groundPt = Eigen::Vector3d(0,0,0);
-
   if(vehicleType_ == "air")
     return u_coll_air(pos);
   else
-    return u_coll_ground(pos, groundRoughness, groundPt);
+  {
+    Eigen::Vector3d avgGroundPt;
+    return !cast_pos_down(pos, avgGroundPt); // successful projection means NOT under-collision
+  }
 }
 
 // ***************************************************************************
@@ -159,125 +130,89 @@ bool octomap_man::u_coll_air(const Eigen::Vector3d& pos)
 }
 
 // ***************************************************************************
-bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos, double& roughness, Eigen::Vector3d& groundPt) 
+bool octomap_man::cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avgGroundPt)
 {
-  //return false;
-  // projects the robot's shadow image (square) to ground and checks for feasibility/collision/terrain
+  // false: unsuccessful projection, true: successful projection
+  // avgGroundPt only valid if false is returned
 
-  //Eigen::MatrixXd surfCoords = surfCoordsBase_ + pos.transpose();
-
-  //std::cout << "Checking for collision: " << pos.transpose() << std::endl;
-
-  if( surfCoordsBase_.rows() < 1 ) // if the robot is represented by no surface shadow, then it's collision-free
+  if( surfCoordsBase_.rows() < 1 ) // if the robot is represented by no surface shadow, then return unsuccessful projection
+  {
+    std::cout << "Ground robot half-width is zero :( " << std::endl; 
     return false;
+  }
 
   const double successfulProjectionsPercent = 0.10;  // if projections success is smaller, it's a cliff or severe decline so return false in that case
   int successfulProjections = 0;
 
-  roughness = 0;
-  groundPt = Eigen::Vector3d(0,0,0);
-
-  double currRoughness = 0;
+  avgGroundPt = Eigen::Vector3d(0,0,0);
   Eigen::Vector3d currGroundPt(0,0,0);
 
-  const int groundPtIndx = ceil(double(surfCoordsBase_.rows())/2) - 1; // select the mid point of the shadow projection as the groundPoint
   for(int i=0; i<surfCoordsBase_.rows(); i++)
   {
-    //std::cout << "Projecting to ground: " << (surfCoordsBase_.row(i).transpose() + pos).transpose() << std::endl;
-    if( !project_point_to_ground( surfCoordsBase_.row(i) + pos.transpose(), currRoughness, currGroundPt ) ) // translate robot shadow point to pos and project
-      continue;
-    //std::cout << "Successfully projected roughness: " << roughness << std::endl;
-    roughness += currRoughness;
-    successfulProjections++;
+    int castDownStatus = cast_ray_down( surfCoordsBase_.row(i) + pos.transpose(), currGroundPt );
 
-    //std::cout << "Setting ground point:  " << groundPt.transpose() << std::endl;
-    groundPt = currGroundPt;
+    if( castDownStatus == 0 ) // under-collision
+      return false;
+
+    if( castDownStatus == -1 ) // invalid projection, could not project to ground
+      continue;
+
+    // if sucessfully projected to ground
+    successfulProjections++;
+    avgGroundPt += currGroundPt;
   }
 
   if( double(successfulProjections) / double(surfCoordsBase_.rows()) < successfulProjectionsPercent )
   {
     std::cout << "Not enough projections " << double(successfulProjections) / double(surfCoordsBase_.rows()) << std::endl;
-    return true;
+    return false;
   }
   else
   {
-    //std::cout << "Here" << std::endl;
-    roughness /= double(successfulProjections);
-    groundPt /= double(successfulProjections);
-  }
-
-  if( roughness > maxGroundRoughness_ )
-  {
-    std::cout << "Ground is rough" << std::endl;
+    avgGroundPt /= double(successfulProjections);
     return true;
   }
-
-  return false;
 }
 
 // ***************************************************************************
-bool octomap_man::project_point_to_ground(const Eigen::Vector3d& pos, double& roughness, Eigen::Vector3d& groundPt)
+int octomap_man::cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& groundPt)
 {
-  // returns if a ground is found (true) or not (false), alongwith ground roughness and point
+  // returns 1: ground found, 0: under collision, -1: ground not found
+  // groundPt only valid if 1 is returned
 
-  octomap::OcTreeKey currKey = octTree_->coordToKey (pos(0), pos(1), pos(2)); // initialize key at current robot position
+  octomap::OcTreeKey currKey = octTree_->coordToKey (ptIn(0), ptIn(1), ptIn(2)); // initialize key at current robot position
   octomap::OcTreeNode* currNode = octTree_->search(currKey);
 
-  if (currNode != NULL)
+  // if the point to project is occupied, point is under collision
+  if (currNode != NULL && octTree_->isNodeOccupied(currNode) )  
   {
-    if (currNode->getLogOdds() > 0) // if the pos to project is occupied, cannot project to ground
-    {
-      //std::cout << "First voxel is occupied" << std::endl;
-      roughness = 0;
-      groundPt = Eigen::Vector3d(0,0,0);
-      return false;
-    }
+    groundPt = Eigen::Vector3d(0,0,0);
+    return 0;
   }
-  
-  //std::cout << "Ground plane search distance: " << groundPlaneSearchDist_ << std::endl;
- // std::cout << "First voxel is free going down " << ceil(groundPlaneSearchDist_/octTree_->getResolution()) << " voxels" << std::endl;
+
+  // if the first voxel is collision-free or unknown, cast ray downwards
 
   for(int i=0; i < ceil(groundPlaneSearchDist_/octTree_->getResolution()); i++ ) // until the search distance is over
   {
     currKey.k[2]--;
     currNode = octTree_->search(currKey);
 
-    //std::cout << "Checking key at coord: " << (octTree_->keyToCoord(currKey)).x() << ", " << (octTree_->keyToCoord(currKey)).y() << ", " << (octTree_->keyToCoord(currKey)).z() << std::endl;
-
     if (currNode == NULL) // if unknown
-    {
-      roughness = 0;
-      groundPt = Eigen::Vector3d(0,0,0);
-      return false;
-    }
-    if (currNode->getLogOdds() < 0) // if free
+      continue;
+    if (!octTree_->isNodeOccupied(currNode)) // if free
       continue;
 
-    //std::cout << "Occupied key is here" << std::endl;
-    // if an occupied cell is found, it is ground, now calculate the roughness and return the point
+    // if an occupied cell is found, it is ground, now return the point and search status
     octomap::point3d groundPtOct = octTree_->keyToCoord(currKey);
     groundPt(0) = groundPtOct.x();
     groundPt(1) = groundPtOct.y();
     groundPt(2) = groundPtOct.z();
-
-    //std::cout << "Computing surface normals" << std::endl;
-    std::vector<octomap::point3d> surfNormals;
-    bool surfNormalSuccess = true; //octTree_->getNormals (groundPtOct, surfNormals, true);
-
-    if ( surfNormalSuccess && surfNormals.size() > 0 ) // treat unknown as occupied, it should never encounter an unknown cell
-      roughness = 0; //surfNormals[0].angleTo( octomap::point3d(0,0,1) ); // TODO: merge in other surfNormals than just 0
-    else
-    {
-      // for debugging, to observe the reliability of the function
-      //ROS_WARN("Surface normal not available, assuming (0,0,1)");
-      roughness = 0;
-    }
-    return true;
+    return 1;
   }
 
-  roughness = 0;
+  // if search all the way down, no ground found
   groundPt = Eigen::Vector3d(0,0,0);
-  return false;
+  return -1;
 }
 
 // ***************************************************************************

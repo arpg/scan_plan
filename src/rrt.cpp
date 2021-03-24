@@ -158,7 +158,7 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
       std::cout << "No solution found in max iterations!" << std::endl;
       break;
     }
-    if ( octMan_->u_coll(posNearest, posNew) )
+    if ( octMan_->u_coll(posNearest, posNew) || octMan_->u_coll_with_update(posNew) ) // project new node to base_link height above ground if "ground"
       continue;
     itr = 0;
 

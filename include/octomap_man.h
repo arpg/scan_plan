@@ -40,16 +40,18 @@ public:
   octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double);
 
   double volumetric_gain(const Eigen::Vector3d& basePos);
-  double volumetric_gain_ground(const Eigen::Vector3d&);
-  double volumetric_gain_air(const Eigen::Vector3d&);
+
   bool u_coll(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);
   bool u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);
   bool u_coll_air(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);
+
   bool u_coll(const Eigen::Vector3d& pos);
-  bool u_coll(const Eigen::Vector3d& pos, double& groundRoughness, Eigen::Vector3d& groundPt);
+  bool u_coll_with_update(Eigen::Vector3d& pos);
   bool u_coll_air(const Eigen::Vector3d& pos);
-  bool u_coll_ground(const Eigen::Vector3d& pos, double& roughness, Eigen::Vector3d& groundPt);
-  bool project_point_to_ground(const Eigen::Vector3d& pos, double& roughness, Eigen::Vector3d& groundPt);
+
+  bool cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& groundPt);
+  int cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& groundPt);
+
   void update_esdf(const Eigen::Vector3d& minBnds, const Eigen::Vector3d& maxBnds);
   void update_octree(octomap::OcTree* octTree);
   void update_robot_pos(const Eigen::Vector3d&);
