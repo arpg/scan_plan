@@ -1,0 +1,81 @@
+<launch>
+
+	<arg name="mav_name" default="$(env ROS_NAMESPACE)" /> 
+  <arg name="log_output" default="screen"/>
+  
+  <arg name="fp_config_path" default="$(find apf_pf)/configs"/>
+  <arg name="launch_filter_point_control" default="true"/>
+  
+  <arg name="fpc_config" default="qmdpc_jint.yaml"/>
+  
+  <arg name="qmdp" default="true" doc="rep_vec_out is used in qmdp mode, force_out is used in apf mode"/>
+	
+	<arg name="base_frame" value="$(arg mav_name)/base_link"/>
+	<arg name="world_frame" value="world"/>
+
+	<!-- ...................... Global Planner .................... -->
+
+  <node name="scan_plan_node" pkg="scan_plan" type="scan_plan_node" output="screen">
+    <remap from="~/octomap_in" to="octomap_binary"/>
+    <remap from="~/pose_hist_in" to="pose_history"/>
+
+    <rosparam command="load" file="$(find scan_plan)/launch/params_husky_tunnel.yaml" subst_value="true"/>
+  </node>
+
+	<!-- ...................... Ground Truth Pose To Tf .................... -->
+
+	<node name="tf_to_pose" pkg="ros_conversions" type="tf_to_pose" output="screen">
+			<remap from="tf_to_pose/pose_topic" to="ground_truth/pose"/>
+			
+			<param name="tf_target_frame" value="$(arg world_frame)"/>
+			<param name="tf_source_frame" value="$(arg base_frame)"/>
+			<param name="pose_frame_id" value="$(arg world_frame)"/>
+			
+			<param name="rate" type="double" value="50.0"/>
+	</node>
+
+	<!-- ...................... Path Following Controller .................... -->
+  <node name="filter_point_control" pkg="apf_pf" type="goal_to_vel_node" output="screen">
+    <rosparam command="load" file="$(arg fp_config_path)/$(arg fpc_config)" subst_value="true"/>
+    <rosparam param="att_vel"> [0.8, 0.8, 1.3] </rosparam>
+
+		<param name="pose_frame_id" value="$(arg world_frame)"/>
+    <param name="base_frame_id" value="$(arg base_frame)"/>
+			
+		<remap from="~/pose_in" to="ground_truth/pose"/>
+    <remap from="~/path_in" to="scan_plan_node/path_out"/>
+			
+		<!--remap from="~/goal_pt_in" to="scan_plan_node/lookahead_out"/-->	
+		<remap from="~/rep_vec_in" to="filter_point_control/rep_vec_in"/>
+    
+		<remap from="~/twist_out" to="cmd_vel_stamped"/>
+	</node>
+
+	<node name="twist_to_twiststamped" pkg="ros_conversions" type="twist_to_twiststamped" output="screen">
+			<remap from="twist_to_twiststamped/twist_in" to="twist_to_twiststamped/twist_in"/>
+			<remap from="twist_to_twiststamped/twiststamped_in" to="cmd_vel_stamped"/>
+			
+			<remap from="twist_to_twiststamped/twist_out" to="cmd_vel"/>
+			<remap from="twist_to_twiststamped/twiststamped_out" to="twist_to_twiststamped/twiststamped_out"/>
+			
+			<param name="frame_id" value="$(arg world_frame)"/>
+	</node>
+
+	<!-- ...................... Explored Volume .................... -->
+  <!-- node pkg="octomap_volume" type="octomap_volume" name="octomap_volume">
+		
+		<remap from="~/octomap_in" to="octomap_binary" /> 
+	
+	</node -->
+
+  <!-- ...................... Octomap and Pose History .................... -->
+  <include file="$(find scan_plan)/launch/octomap.launch">
+    <arg name="mav_name" value="$(arg mav_name)"/>
+  </include>
+  <include file="$(find ros_conversions)/launch/tf_to_path.launch">
+    <arg name="mav_name" value="$(arg mav_name)"/>
+    <arg name="world_frame" value="$(arg world_frame)"/>
+    <arg name="base_frame" value="$(arg base_frame)"/>
+  </include>
+
+</launch>

@@ -43,7 +43,8 @@ bool octomap_man::u_coll(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos
 // ***************************************************************************
 bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
 {
-  const double delLambda = octTree_->getResolution() / (pos2 - pos1).norm(); // projection surfaces should overlap so a thin wall below a path is not missed
+  //const double delLambda = octTree_->getResolution() / (pos2 - pos1).norm(); // projection surfaces should overlap so a thin wall below a path is not missed
+  const double delLambda = radRob_ / (2*(pos2 - pos1).norm()); // projection surfaces should overlap so a thin wall below a path is not missed
 
   double lambda = 0;
   Eigen::Vector3d pos;
@@ -52,7 +53,7 @@ bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector
   {
     pos = (1-lambda)*pos1 + lambda*pos2; 
 
-    if ( u_coll(pos) )
+    if ( u_coll(pos) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) )
       return true; // under-collision
 
     lambda += delLambda;
@@ -147,6 +148,8 @@ bool octomap_man::cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avg
   avgGroundPt = Eigen::Vector3d(0,0,0);
   Eigen::Vector3d currGroundPt(0,0,0);
 
+  double maxElevation, minElevation;
+  bool isFirst = true;
   for(int i=0; i<surfCoordsBase_.rows(); i++)
   {
     int castDownStatus = cast_ray_down( surfCoordsBase_.row(i) + pos.transpose(), currGroundPt );
@@ -160,11 +163,28 @@ bool octomap_man::cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avg
     // if sucessfully projected to ground
     successfulProjections++;
     avgGroundPt += currGroundPt;
+
+    if(isFirst)
+    {
+      minElevation = currGroundPt(2);
+      maxElevation = currGroundPt(2);
+      isFirst = false;
+    }
+    else if( currGroundPt(2) > maxElevation )
+      maxElevation = currGroundPt(2);
+    else if( currGroundPt(2) < minElevation )
+      minElevation = currGroundPt(2);
+  }
+
+  if( (maxElevation - minElevation) > maxGroundStep_ )
+  {
+    std::cout << "Large elevation change: " << (maxElevation - minElevation) << std::endl;
+    return false;
   }
 
   if( double(successfulProjections) / double(surfCoordsBase_.rows()) < successfulProjectionsPercent )
   {
-    std::cout << "Not enough projections " << double(successfulProjections) / double(surfCoordsBase_.rows()) << std::endl;
+    std::cout << "Not enough projections " << double(successfulProjections) << "," << double(surfCoordsBase_.rows()) << std::endl;
     return false;
   }
   else
@@ -183,6 +203,13 @@ int octomap_man::cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& gro
   octomap::OcTreeKey currKey = octTree_->coordToKey (ptIn(0), ptIn(1), ptIn(2)); // initialize key at current robot position
   octomap::OcTreeNode* currNode = octTree_->search(currKey);
 
+  // if unknown is occupied and the point to project is unknown, point is under collision
+  if (esdfUnknownAsOccupied_ && currNode == NULL)
+  {
+    groundPt = Eigen::Vector3d(0,0,0);
+    return 0;
+  }
+
   // if the point to project is occupied, point is under collision
   if (currNode != NULL && octTree_->isNodeOccupied(currNode) )  
   {
@@ -190,7 +217,7 @@ int octomap_man::cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& gro
     return 0;
   }
 
-  // if the first voxel is collision-free or unknown, cast ray downwards
+  // if the first voxel is collision-free , cast ray downwards
 
   for(int i=0; i < ceil(groundPlaneSearchDist_/octTree_->getResolution()); i++ ) // until the search distance is over
   {

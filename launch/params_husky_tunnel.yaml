@@ -1,0 +1,54 @@
+base_frame_id: A01/base_link
+world_frame_id: world
+
+sensor_fovs_horz_vert_degrees: [360, 45] # append [horz,vert] for more sensors
+sensor_res_horz_vert_pts: [360, 45]
+sensor_ranges: [10]
+sensor_frame_ids: [A01/base_link/front_laser]
+
+min_bounds_local: [-10, -10, -0.2] # used for local path planning
+max_bounds_local: [10, 10, 0.2]
+n_rrt_nodes: 300
+near_radius_rrt: 2.0
+delta_distance_rrt: 0.5
+n_fail_iterations_rrt: 1000
+succ_rad_rrt: 0.7
+
+nearest_radius_graph: 1.0
+near_radius_graph: 5.0 # 2 times delta_distance_rrt
+min_vol_gain_frontier: 200.0 # calculate wisely, using discretized camera model
+home_position: [4, 0, 1.5] # should be collision-free
+min_man_dist_frontiers: 3.0
+#entrance_min_bnds: [0, -50, -5]
+#entrance_max_bnds: [10, 50, 30]
+#entrance_min_bnds: [0, 5, 5]
+#entrance_max_bnds: [20, 39, 25]
+
+entrance_min_bnds: [-10, 0, -1]
+entrance_max_bnds: [8, 10, 5]
+
+frontier_cost_gains: [4.0, 1.0] # distance from robot, vol gain (this gain may change with sensor resolution)
+
+time_interval_replan: 0.2
+
+esdf_max_dist: 5.0 # greater than robot radius
+esdf_unknown_as_occupied: true
+vehicle_type: ground
+robot_radius: 0.45
+max_ground_roughness: 60 # angle from positive z (radians)
+max_ground_step: 0.15 # greater than octomap resolution
+ground_plane_search_distance: 1.0
+base_frame_height_above_ground: 0.5
+
+admissible_min_path_length: 5
+path_cost_gains: [3.5, 1.0, 0.5, 0.2] # pose history distance, exploration heading, exploration height, volumetric gain
+min_bnds_geofence: [-100000, -100000, -100000]
+max_bnds_geofence: [100000, 100000, 100000]
+n_hist_pts_for_exploration_dir: 10
+vol_gain_monitor_dur_mode_switch: 5
+succ_rad_end_of_path: 1.5
+min_vol_gain_local_plan: 200.0
+no_of_tries_local_plan: 2
+
+
+verbose: true

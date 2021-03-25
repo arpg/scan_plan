@@ -19,7 +19,7 @@ private:
   DynamicEDTOctomap* octDist_ = NULL;
 
   double maxDistEsdf_;
-  bool esdfUnknownAsOccupied_; // only for "air" for now
+  bool esdfUnknownAsOccupied_;
   double radRob_; // radius if "air", half-width if "ground"
   double maxGroundRoughness_; // only for "ground" for now 
   double maxGroundStep_; // only for "ground" for now, determines the maximum step size on the ground that the robot is able to go over
