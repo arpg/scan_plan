@@ -6,6 +6,11 @@ sensor_res_horz_vert_pts: [360, 45]
 sensor_ranges: [10]
 sensor_frame_ids: [A01/base_link/front_laser]
 
+#sensor_fovs_horz_vert_degrees: [360, 35, 62, 45, 62, 45] # append [horz,vert] for more sensors
+#sensor_res_horz_vert_pts: [360, 35, 62, 45, 62, 45]
+#sensor_ranges: [10, 4, 4]
+#sensor_frame_ids: [A01/base_link/front_laser, A01/base_link/tof_bottom, A01/base_link/tof_top]
+
 min_bounds_local: [-10, -10, -8.0] # used for local path planning
 max_bounds_local: [10, 10, 8.0]
 n_rrt_nodes: 300
@@ -16,14 +21,11 @@ succ_rad_rrt: 0.7
 
 nearest_radius_graph: 1.0
 near_radius_graph: 5.0 # 2 times delta_distance_rrt
-min_vol_gain_frontier: 100.0 # calculate wisely, using discretized camera model
+min_vol_gain_frontier: 500.0 # calculate wisely, using discretized camera model
 home_position: [4, 0, 1.5] # should be collision-free
 min_man_dist_frontiers: 4.0
 #entrance_min_bnds: [0, -50, -5]
 #entrance_max_bnds: [10, 50, 30]
-#entrance_min_bnds: [0, 5, 5]
-#entrance_max_bnds: [20, 39, 25]
-
 entrance_min_bnds: [0, 5, 5]
 entrance_max_bnds: [20, 39, 25]
 

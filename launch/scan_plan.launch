@@ -8,7 +8,7 @@
   <arg name="down_cam_name" default="$(env TOF_DOWN_NAME)"/>
   
   <arg name="fp_config_path" default="$(find apf_pf)/configs"/>
-	<arg name="launch_filter_point_fore" default="true"/>
+	<arg name="launch_filter_point_fore" default="false"/>
   <arg name="launch_depth_to_cloud" default="true" doc="realsense requires conversion from depth to ordered ptcloud"/>
   <arg name="launch_filter_point_control" default="true"/>
   
