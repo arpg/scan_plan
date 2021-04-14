@@ -133,8 +133,15 @@ bool octomap_man::u_coll_air(const Eigen::Vector3d& pos)
 // ***************************************************************************
 bool octomap_man::cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avgGroundPt)
 {
+  double minElevation, maxElevation;
+  return cast_pos_down(pos, avgGroundPt, minElevation, maxElevation);
+}
+
+// ***************************************************************************
+bool octomap_man::cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avgGroundPt, double& minElevation, double& maxElevation)
+{
   // false: unsuccessful projection, true: successful projection
-  // avgGroundPt only valid if false is returned
+  // avgGroundPt, minElevation, maxElevation only valid if true is returned
 
   if( surfCoordsBase_.rows() < 1 ) // if the robot is represented by no surface shadow, then return unsuccessful projection
   {
@@ -148,7 +155,6 @@ bool octomap_man::cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avg
   avgGroundPt = Eigen::Vector3d(0,0,0);
   Eigen::Vector3d currGroundPt(0,0,0);
 
-  double maxElevation, minElevation;
   bool isFirst = true;
   for(int i=0; i<surfCoordsBase_.rows(); i++)
   {

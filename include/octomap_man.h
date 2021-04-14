@@ -49,7 +49,8 @@ public:
   bool u_coll_with_update(Eigen::Vector3d& pos);
   bool u_coll_air(const Eigen::Vector3d& pos);
 
-  bool cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& groundPt);
+  bool cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avgGroundPt);
+  bool cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avgGroundPt, double& minElevation, double& maxElevation);
   int cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& groundPt);
 
   void update_esdf(const Eigen::Vector3d& minBnds, const Eigen::Vector3d& maxBnds);

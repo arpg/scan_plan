@@ -30,9 +30,9 @@
 		
 		<param name="frame_id" type="string" value="world" />
 		
-		<param name="sensor_model/max_range" value="2.0" />
+		<param name="sensor_model/max_range" value="2.5" />
 		
-		<remap from="cloud_in" to="/A01/front/depth/points" /> 
+		<remap from="cloud_in" to="/A01/vb_cloud" /> 
 	
 	</node>
 </launch>

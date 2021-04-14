@@ -29,6 +29,9 @@ public:
   static std::pair<double, double> mean_heading_height_err(double yawIn, double heightIn, const Eigen::MatrixXd& pathIn);
   static double path_to_path_dist(const Eigen::MatrixXd& path1, const Eigen::MatrixXd& path2);
   static double point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::MatrixXd& pathIn);
+
+  Eigen::MatrixXd interpolate(const Eigen::MatrixXd& path, const double& maxSpacePts);
+  bool is_staircase(const Eigen::MatrixXd& path, const double& minStepHeight, const int& minNSteps);
 };
 
 #endif

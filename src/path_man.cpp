@@ -156,8 +156,61 @@ bool path_man::path_len_check(const Eigen::MatrixXd& path)
 }
 
 // ***************************************************************************
+bool path_man::is_staircase(const Eigen::MatrixXd& path, const double& minStepHeight, const int& minNSteps)
+{
+  // checks for the elevation changes and that the elevation changes are happening at increasing or decreasing heights
+
+  double minElevation, maxElevation;
+  Eigen::Vector3d avgGroundPt;
+
+  std::vector<double> heights; // heights at which the elevation changes are recorded
+
+  for (int i=0; i<path.rows(); i++)
+    if( octMan_->cast_pos_down(path.row(i), avgGroundPt, minElevation, maxElevation) && abs(maxElevation - minElevation) >= minStepHeight )
+      heights.push_back(minElevation);
+
+  if(heights.size() < 1) // there is no staircase on flat ground
+    return false;
+  if(heights.size() < minNSteps) // not enough elevation changes detected
+    return false;
+
+  // first step is rooted at zero elevation
+  int nSteps = 1;
+  
+  double currStepHeight = heights[0];
+  for (int i=0; i<heights.size(); i++)
+  {
+    if( abs(heights[i]-currStepHeight) >=  minStepHeight ) // check if the steps are atleast minStepHeight apart
+    {
+      nSteps++;
+      currStepHeight = heights[i];
+    }
+  }
+  
+  if(nSteps >= minNSteps)
+    return true;
+  return false;
+}
 
 // ***************************************************************************
+Eigen::MatrixXd path_man::interpolate(const Eigen::MatrixXd& path, const double& maxSpacePts) // maxSpacePts: maximum distance between two points
+{
+  if(path.rows() < 2)
+    return path;
+
+  std::vector<Eigen::Vector3d> pathOut;
+
+  Eigen::Vector3d pos1, pos2;
+  for(int i=0; i<(path.rows()-1); i++)
+  {
+    double delTheta = maxSpacePts / ( path.row(i+1) - path.row(i) ).norm();
+
+    for(double theta=0; theta<=1; theta+=delTheta)
+      pathOut.push_back( (1-theta) * path.row(i) + theta * path.row(i+1) );
+  }
+
+  return Eigen::MatrixXd::Map(pathOut[0].data(), 3, pathOut.size()).transpose();
+}
 
 /*
 geometry_msgs::TransformStamped path_man::transform_msg(Eigen::Vector3d pos1, Eigen::Vector3d pos2, bool loc) 
