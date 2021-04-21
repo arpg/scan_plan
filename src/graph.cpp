@@ -2,7 +2,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax, const std::vector<double>& cGain)
+graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax, const std::vector<double>& cGain, const double& manDistAvoidFrontier)
 {
   adjList_ = new BiDirectionalGraph;
 
@@ -22,6 +22,7 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double 
   frameId_ = frameId;
   minVolGain_ = minVolGain;
   minManDistFrontier_ = minManDistFrontier;
+  manDistAvoidFrontier_ = manDistAvoidFrontier;
   cGain_ = cGain;
 
   entranceMin_ = Eigen::Vector3d(entranceMin[0], entranceMin[1], entranceMin[2]);
@@ -265,6 +266,32 @@ void graph::update_frontiers_vol_gain()
 }
 
 // ***************************************************************************
+std::forward_list<frontier> graph::ignore_avoid_frontiers()
+{
+  std::forward_list<frontier> frontiers;
+
+  for(frontier& front: frontiers_)
+  {
+   if( !is_avoid_frontier(get_pos(front.vertDesc)) )
+     frontiers.push_front(front);
+  }
+
+  return frontiers;
+}
+
+// ***************************************************************************
+bool graph::is_avoid_frontier(const Eigen::Vector3d& pos)
+{
+  for(int i=0; i<avoidFrontiers_.size(); i++)
+  {
+    if( ( avoidFrontiers_[i] - pos ).lpNorm<1>() < manDistAvoidFrontier_ )
+      return true;
+  }
+
+  return false;
+}
+
+// ***************************************************************************
 bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
 {
   if(path.rows() < 1)
@@ -391,9 +418,23 @@ Eigen::MatrixXd graph::plan_shortest_path(const VertexDescriptor& fromVertex, co
 }
 
 // ***************************************************************************
+void graph::add_avoid_frontier(const Eigen::Vector3d& avoidFrontier)
+{
+  avoidFrontiers_.push_back(avoidFrontier);
+}
+
+// ***************************************************************************
+void graph::clear_avoid_frontiers()
+{
+  avoidFrontiers_.resize(0);
+}
+
+// ***************************************************************************
 frontier graph::get_best_frontier(const Eigen::Vector3d& robPos) // returns frontier with <= 0 volGain if none found
 {
-  if(frontiers_.empty())
+  std::forward_list<frontier> frontiers = ignore_avoid_frontiers();
+
+  if(frontiers.empty())
   {
     frontier front;
     front.volGain = -1;
@@ -401,15 +442,15 @@ frontier graph::get_best_frontier(const Eigen::Vector3d& robPos) // returns fron
   }
 
   int sz = 0;
-  for(frontier& front: frontiers_)
+  for(frontier& front: frontiers)
     sz++;
   std::cout << "Num Frontiers: " <<  sz << std::endl;
 
-  frontier bestFront = frontiers_.front(); // initialize with first frontier
+  frontier bestFront = frontiers.front(); // initialize with first frontier
   double bestCost = frontier_cost_alpha(bestFront, robPos); // initialize min cost with first 
 
   int n = -1;
-  for(frontier& front: frontiers_)
+  for(frontier& front: frontiers)
   {
     if(n++ < 1)
       continue;

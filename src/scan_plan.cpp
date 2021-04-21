@@ -116,7 +116,7 @@ void scan_plan::setup_graph()
   // prereqs setup_pose, setup_octomap
 
   ROS_INFO("%s: Waiting for graph params ...", nh_->getNamespace().c_str());
-  double graphRadNear, minVolGain, graphRadNearest, minManDistFrontier;
+  double graphRadNear, minVolGain, graphRadNearest, minManDistFrontier, manRadAvoidFrontier;
   std::vector<double> homePos, entranceMin, entranceMax, cGain;
  
   while(!nh_->getParam("near_radius_graph", graphRadNear));
@@ -127,6 +127,7 @@ void scan_plan::setup_graph()
   while(!nh_->getParam("entrance_min_bnds", entranceMin));
   while(!nh_->getParam("entrance_max_bnds", entranceMax));
   while(!nh_->getParam("frontier_cost_gains", cGain));
+  while(!nh_->getParam("avoid_frontier_man_radius", manRadAvoidFrontier));
  
   
   ROS_INFO("%s: Setting up graph ...", nh_->getNamespace().c_str());
@@ -134,7 +135,7 @@ void scan_plan::setup_graph()
   homePos_(1) = homePos[1];
   homePos_(2) = homePos[2];
 
-  graph_ = new graph(homePos_, graphRadNear, graphRadNearest, radRob_, minVolGain, worldFrameId_, octMan_, minManDistFrontier, entranceMin, entranceMax, cGain);
+  graph_ = new graph(homePos_, graphRadNear, graphRadNearest, radRob_, minVolGain, worldFrameId_, octMan_, minManDistFrontier, entranceMin, entranceMax, cGain, manRadAvoidFrontier);
 }
 
 // ***************************************************************************
@@ -238,6 +239,50 @@ Eigen::Vector3d scan_plan::transform_to_eigen_pos(const geometry_msgs::Transform
 void scan_plan::task_cb(const std_msgs::String& taskMsg)
 {
   // INDUCED TASK LOGIC FUNCTION
+
+  if( (taskMsg.data == "stuck_replan" || taskMsg.data == "stuck") ) // gonna replan every time 
+  {
+    graph_->add_avoid_frontier(minCstPath_.bottomRows(1)); // temporarily avoid the end position, TODO: clear avoidPos array when the end of stuck path is reached / on timer
+
+    path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for safety
+    Eigen::MatrixXd minCstPath = plan_locally("random", nTriesLocalPlan_, false); // randomly chooses a path regardless of any cost, dont add any path to graph
+
+    if(minCstPath.rows() > 0)
+    {
+      status_.mode = plan_status::MODE::UNSTUCK;
+      minCstPath_ = minCstPath;
+      path_man::publish_path(minCstPath_, worldFrameId_, pathPub_); // publish path if found, otherwise keep empty path
+      publish_can_plan(true);
+    }
+    else
+      publish_can_plan(false);
+
+    return;
+  }
+
+  //TODO: right now it only replans to the goal point if the mode changes but what if it's already in goal point mode and the goal point changes 
+  if( (taskMsg.data == "guiCommand" || taskMsg.data == "gui_command" || taskMsg.data == "guiCmd" || taskMsg.data == "gui_cmd") && status_.mode != plan_status::MODE::GOALPT )
+  {  
+    path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for computation
+    Eigen::MatrixXd minCstPath = plan_to_point(status_.goalPt);
+
+    if(minCstPath.rows() > 0)
+    {
+      status_.mode = plan_status::MODE::GOALPT;
+      minCstPath_ = minCstPath;
+      publish_can_plan(true);
+    }
+    else
+      publish_can_plan(false);
+    path_man::publish_path(minCstPath_, worldFrameId_, pathPub_); // publish path if found, otherwise publish older path and don't change mode
+
+    return;
+  }
+
+  // if the robot is following unstuck path, only gui goal point can override it
+  if( status_.mode == plan_status::MODE::UNSTUCK )
+    return;
+
   if( (taskMsg.data == "report" || taskMsg.data == "Report" || taskMsg.data == "home" || taskMsg.data == "Home") && status_.mode != plan_status::MODE::REPORT )
   {
     path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for computation
@@ -252,6 +297,8 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
     else
       publish_can_plan(false);
     path_man::publish_path(minCstPath_, worldFrameId_, pathPub_); // publish path if found, otherwise publish older path and don't change mode
+
+    return;
   }
 
   if( (taskMsg.data == "explore" || taskMsg.data == "Explore") && (status_.mode != plan_status::MODE::LOCALEXP || status_.mode != plan_status::MODE::GLOBALEXP) )
@@ -279,23 +326,7 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
       }
     }
 
-  }
-
-  //TODO: right now it only replans to the goal point if the mode changes but what if it's already in goal point mode and the goal point changes 
-  if( (taskMsg.data == "guiCommand" || taskMsg.data == "gui_command" || taskMsg.data == "guiCmd" || taskMsg.data == "gui_cmd") && status_.mode != plan_status::MODE::GOALPT )
-  {  
-    path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for computation
-    Eigen::MatrixXd minCstPath = plan_to_point(status_.goalPt);
-
-    if(minCstPath.rows() > 0)
-    {
-      status_.mode = plan_status::MODE::GOALPT;
-      minCstPath_ = minCstPath;
-      publish_can_plan(true);
-    }
-    else
-      publish_can_plan(false);
-    path_man::publish_path(minCstPath_, worldFrameId_, pathPub_); // publish path if found, otherwise publish older path and don't change mode
+    return;
   }
 }
 
@@ -392,7 +423,16 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   //TODO: Add goal point to graph while planning to a goal point because the mode switches to local so if the goal point is far from graph, connectivity might be a prob
   //TODO: Add vehicle not moving and map change detections logic
 
-  if(status_.mode == plan_status::MODE::REPORT && end_of_path())
+  if(status_.mode == plan_status::MODE::UNSTUCK && end_of_path() )
+  {
+    graph_->add_path(minCstPath_, true);  // add unstuck path to graph after robot starts moving to avoid dense graph around the stationary robot   
+
+    status_.mode = plan_status::MODE::LOCALEXP;
+    Eigen::MatrixXd minCstPath = plan_locally();
+    if(minCstPath.rows() > 0) // local path found
+      minCstPath_ = minCstPath;
+  }
+  else if(status_.mode == plan_status::MODE::REPORT && end_of_path())
   {
     ROS_WARN("Report mode end-of-path, planning globally");
     Eigen::MatrixXd minCstPath = plan_globally(); // vehicle already stopped for computation due to EOP
@@ -427,7 +467,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
     if(minCstPath.rows() > 0) // local path found
       minCstPath_ = minCstPath;
   }
-  else if(status_.mode == plan_status::MODE::LOCALEXP && end_of_path())
+  else if( (status_.mode == plan_status::MODE::LOCALEXP) && end_of_path())
   {
     ROS_WARN("Local exp mode end-of-path, planning locally");
     status_.mode = plan_status::MODE::LOCALEXP;
@@ -698,14 +738,14 @@ Eigen::MatrixXd scan_plan::plan_locally()
 }
 
 // ***************************************************************************
-Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, const int& nTries)
+Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, const int& nTries, bool addToGraph)
 {
   // plan_locally does not return a path if no path is found that satisfies path length requirement or if all paths lead to entrance or if vol gain of all paths is low (in beta mode)
 
   Eigen::MatrixXd minCstPath(0,0);
   for(int i=0; i<nTries; i++)
   {
-    minCstPath = plan_locally(costType); // try with costType until a path is found
+    minCstPath = plan_locally(costType, addToGraph); // try with costType until a path is found
     if( minCstPath.rows() > 0 )
       return minCstPath;
   }
@@ -713,7 +753,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, const int& 
 } 
 
 // ***************************************************************************
-Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType) 
+Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToGraph) 
 {
   // returns rrt lookahead path, ids of all leaves and of the lookahead path leaf
   // get_path function in rrt can be used to get paths for a leaf id
@@ -746,6 +786,8 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType)
       Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
       if(!pathMan_->path_len_check(path)) // minimum path length condition
         continue;
+      if( graph_->is_avoid_frontier(path.bottomRows(1)) ) // avoid pos condition
+        continue;
 
       double pathCst = path_cost_alpha(path, std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight));
 
@@ -764,6 +806,8 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType)
       Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
       if(!pathMan_->path_len_check(path)) // minimum path length condition
         continue;
+      if( graph_->is_avoid_frontier(path.bottomRows(1)) ) // avoid pos condition
+        continue;
 
       double volGain;
       double pathCst = path_cost_beta(path, std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), volGain);
@@ -777,10 +821,27 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType)
       }
     }
   }
+  else if(costType == "random")
+  {
+    for(int i=0; i<idLeaves.size(); i++)
+    {
+      Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
+      if(!pathMan_->path_len_check(path)) // minimum path length condition
+        continue;
+      if( graph_->is_avoid_frontier(path.bottomRows(1)) ) // avoid pos condition
+        continue;
+
+      minCst = 0.0;
+      minCstPath = path;
+      idPathLeaf = idLeaves[i];
+    
+      break;
+    }
+  }
 
   //std::cout << std::endl;
 
-  if( minCstPath.rows() > 1 )
+  if( minCstPath.rows() > 1 && addToGraph)
   {
     std::cout << "Adding paths to the graph" << std::endl;
     bool success = add_paths_to_graph(rrtTree_, idLeaves, idPathLeaf, graph_);

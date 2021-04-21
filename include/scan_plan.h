@@ -19,7 +19,7 @@
 
 struct plan_status
 {
-  enum MODE {LOCALEXP, GOALPT, GLOBALEXP, REPORT};
+  enum MODE {LOCALEXP, GOALPT, GLOBALEXP, REPORT, UNSTUCK};
 
   MODE mode = MODE::LOCALEXP;
   Eigen::Vector3d goalPt = Eigen::Vector3d(0,0,0); // if planning to a goal point
@@ -144,9 +144,8 @@ public:
 
   double path_cost_alpha(const Eigen::MatrixXd&, const double&, const double&);
   double path_cost_beta(const Eigen::MatrixXd&, const double&, const double&, double&);
-  Eigen::MatrixXd plan_locally(const std::string& costType, const int& nTries);
-  Eigen::MatrixXd plan_locally(const std::string&);
-  
+  Eigen::MatrixXd plan_locally(const std::string& costType, const int& nTries, bool = true);
+  Eigen::MatrixXd plan_locally(const std::string&, bool = true);  
 };
 
 #endif

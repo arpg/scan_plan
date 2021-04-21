@@ -70,6 +70,9 @@ private:
   Eigen::Vector3d entranceMax_;
 
   std::vector<double> cGain_;
+
+  std::vector<Eigen::Vector3d> avoidFrontiers_;
+  double manDistAvoidFrontier_;
  
   // if a node in the graph is removed, the iterators may change, frontier nodes cannot be tracked using VertexIterator in that case
   // Preference 1. Don't remove anything from the graph
@@ -78,7 +81,7 @@ private:
  
 public:
   ~graph();
-  graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>& );
+  graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>&, const double& );
   
   bool add_vertex(const gvert);
   bool u_coll(const gvert, const gvert);  
@@ -102,6 +105,11 @@ public:
   bool is_entrance(const Eigen::Vector3d&);
   bool is_empty_frontiers();
   double frontier_cost_alpha(const frontier&, const Eigen::Vector3d&);
+
+  void add_avoid_frontier(const Eigen::Vector3d&);
+  void clear_avoid_frontiers();
+  std::forward_list<frontier> ignore_avoid_frontiers();
+  bool is_avoid_frontier(const Eigen::Vector3d&);
 };
 
 // ***************************************************************************
