@@ -240,9 +240,12 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
 {
   // INDUCED TASK LOGIC FUNCTION
 
+  if( (isInitialized_ & 0x03) != 0x03 )
+    return;
+
   if( (taskMsg.data == "stuck_replan" || taskMsg.data == "stuck") ) // gonna replan every time 
   {
-    graph_->add_avoid_frontier(minCstPath_.bottomRows(1)); // temporarily avoid the end position, TODO: clear avoidPos array when the end of stuck path is reached / on timer
+    graph_->add_avoid_frontier(minCstPath_.bottomRows(1).transpose()); // temporarily avoid the end position, TODO: clear avoidPos array when the end of stuck path is reached / on timer
 
     path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for safety
     Eigen::MatrixXd minCstPath = plan_locally("random", nTriesLocalPlan_, false); // randomly chooses a path regardless of any cost, dont add any path to graph
@@ -786,7 +789,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
       Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
       if(!pathMan_->path_len_check(path)) // minimum path length condition
         continue;
-      if( graph_->is_avoid_frontier(path.bottomRows(1)) ) // avoid pos condition
+      if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) ) // avoid pos condition
         continue;
 
       double pathCst = path_cost_alpha(path, std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight));
@@ -806,7 +809,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
       Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
       if(!pathMan_->path_len_check(path)) // minimum path length condition
         continue;
-      if( graph_->is_avoid_frontier(path.bottomRows(1)) ) // avoid pos condition
+      if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) ) // avoid pos condition
         continue;
 
       double volGain;
@@ -828,7 +831,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
       Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
       if(!pathMan_->path_len_check(path)) // minimum path length condition
         continue;
-      if( graph_->is_avoid_frontier(path.bottomRows(1)) ) // avoid pos condition
+      if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) ) // avoid pos condition
         continue;
 
       minCst = 0.0;

@@ -19,6 +19,7 @@ near_radius_graph: 5.0 # 2 times delta_distance_rrt
 min_vol_gain_frontier: 200.0 # calculate wisely, using discretized camera model
 home_position: [4, 0, 1.5] # should be collision-free
 min_man_dist_frontiers: 3.0
+avoid_frontier_man_radius: 3
 #entrance_min_bnds: [0, -50, -5]
 #entrance_max_bnds: [10, 50, 30]
 #entrance_min_bnds: [0, 5, 5]
@@ -34,9 +35,9 @@ time_interval_replan: 0.2
 esdf_max_dist: 5.0 # greater than robot radius
 esdf_unknown_as_occupied: true
 vehicle_type: ground
-robot_radius: 0.45
+robot_radius: 0.4
 max_ground_roughness: 60 # angle from positive z (radians)
-max_ground_step: 0.15 # greater than octomap resolution
+max_ground_step: 0.35 # greater than octomap resolution
 ground_plane_search_distance: 1.0
 base_frame_height_above_ground: 0.5
 

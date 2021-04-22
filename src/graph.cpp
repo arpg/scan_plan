@@ -430,7 +430,7 @@ void graph::clear_avoid_frontiers()
 }
 
 // ***************************************************************************
-frontier graph::get_best_frontier(const Eigen::Vector3d& robPos) // returns frontier with <= 0 volGain if none found
+frontier graph::get_best_frontier(const Eigen::Vector3d& robPos) // returns frontier with <= 0 volGain if none found, avoids avoidFrontiers
 {
   std::forward_list<frontier> frontiers = ignore_avoid_frontiers();
 

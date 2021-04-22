@@ -71,7 +71,7 @@ private:
 
   std::vector<double> cGain_;
 
-  std::vector<Eigen::Vector3d> avoidFrontiers_;
+  std::vector<Eigen::Vector3d> avoidFrontiers_; // only valid for get_best_frontier function for now
   double manDistAvoidFrontier_;
  
   // if a node in the graph is removed, the iterators may change, frontier nodes cannot be tracked using VertexIterator in that case
