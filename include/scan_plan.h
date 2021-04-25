@@ -29,6 +29,7 @@ struct plan_status
   ros::Time volExpStamp = ros::Time::now();
 
   bool changeDetected_ = false;
+  bool inducedEndOfPath = false;
 };
 
 // ***************************************************************************

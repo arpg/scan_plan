@@ -243,7 +243,13 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
   if( (isInitialized_ & 0x03) != 0x03 )
     return;
 
-  if( (taskMsg.data == "stuck_replan" || taskMsg.data == "stuck") ) // gonna replan every time 
+  if( taskMsg.data == "end_of_path" || taskMsg.data == "eop" )
+  {
+    status_.inducedEndOfPath = true;
+    return;
+  }
+
+  if( taskMsg.data == "stuck_replan" || taskMsg.data == "stuck" || taskMsg.data == "unstuck" ) // gonna replan every time it's received
   {
     graph_->add_avoid_frontier(minCstPath_.bottomRows(1).transpose()); // temporarily avoid the end position, TODO: clear avoidPos array when the end of stuck path is reached / on timer
 
@@ -399,6 +405,12 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 // ***************************************************************************
 bool scan_plan::end_of_path()
 {
+  if( status_.inducedEndOfPath )
+  {
+    status_.inducedEndOfPath = false;
+    return true;
+  }
+
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
   octMan_->update_robot_pos(robPos);
@@ -691,9 +703,17 @@ Eigen::MatrixXd scan_plan::plan_globally()
 
   if(front.volGain <= 0) // if there is no frontier
     return Eigen::MatrixXd(0,0);
+//
+  std::cout << "Connecting to the frontier via a straight line" << std::endl;
+  if( !octMan_->u_coll( robPos, graph_->get_pos(front.vertDesc) ) )
+  {
+    Eigen::MatrixXd path(2,3);
 
-  //return plan_path_to_point(graph_->get_pos(front.vertDesc));
-
+    path.row(0) = robPos;
+    path.row(1) = graph_->get_pos(front.vertDesc);
+    return path;
+  }
+//
   std::cout << "Planning to graph" << std::endl;
   VertexDescriptor vertD1;
   Eigen::MatrixXd minCstPath1 = plan_to_graph(robPos, vertD1);

@@ -6,7 +6,7 @@
   <arg name="fp_config_path" default="$(find apf_pf)/configs"/>
   <arg name="launch_filter_point_control" default="true"/>
   
-  <arg name="fpc_config" default="qmdpc_jint.yaml"/>
+  <arg name="fpc_config" default="qmdpc_ground.yaml"/>
   
   <arg name="qmdp" default="true" doc="rep_vec_out is used in qmdp mode, force_out is used in apf mode"/>
 	

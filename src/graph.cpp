@@ -276,6 +276,7 @@ std::forward_list<frontier> graph::ignore_avoid_frontiers()
      frontiers.push_front(front);
   }
 
+  frontiers.reverse();
   return frontiers;
 }
 
@@ -437,7 +438,7 @@ frontier graph::get_best_frontier(const Eigen::Vector3d& robPos) // returns fron
   if(frontiers.empty())
   {
     frontier front;
-    front.volGain = -1;
+    front.volGain = -1.0;
     return front;
   }
 
@@ -446,6 +447,17 @@ frontier graph::get_best_frontier(const Eigen::Vector3d& robPos) // returns fron
     sz++;
   std::cout << "Num Frontiers: " <<  sz << std::endl;
 
+  for(frontier& front: frontiers) // assuming frontiers are arranged from most recent to old, choose the most recent with enough/atleast min vol gain
+  {
+    if( front.volGain >= minVolGain_ )
+      return front;
+  }
+
+  frontier front;
+  front.volGain = -1.0;
+  return front;
+
+/*
   frontier bestFront = frontiers.front(); // initialize with first frontier
   double bestCost = frontier_cost_alpha(bestFront, robPos); // initialize min cost with first 
 
@@ -455,20 +467,22 @@ frontier graph::get_best_frontier(const Eigen::Vector3d& robPos) // returns fron
     if(n++ < 1)
       continue;
     
-    if( (front.volGain < bestCost))
+    double frontCost = frontier_cost_alpha(front, robPos);
+    if( (frontCost < bestCost))
     {
       bestFront = front;
-      bestCost = frontier_cost_alpha(front, robPos);
+      bestCost = frontCost;
     }
   }
 
   return bestFront;
+*/
 }
 
 // ***************************************************************************
 double graph::frontier_cost_alpha(const frontier& frontIn, const Eigen::Vector3d& robPos)
 {
-  return cGain_[0]*(robPos-get_pos(frontIn.vertDesc)).lpNorm<1>() - cGain_[1]*frontIn.volGain; 
+  return cGain_[0]*(robPos-get_pos(frontIn.vertDesc)).lpNorm<1>() - cGain_[1]*frontIn.volGain;
 }
 
 // ***************************************************************************
