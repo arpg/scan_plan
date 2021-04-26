@@ -110,6 +110,7 @@ public:
   void clear_avoid_frontiers();
   std::forward_list<frontier> ignore_avoid_frontiers();
   bool is_avoid_frontier(const Eigen::Vector3d&);
+  void remove_frontier(const Eigen::Vector3d&);
 };
 
 // ***************************************************************************

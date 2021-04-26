@@ -184,7 +184,7 @@ bool octomap_man::cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avg
 
   if( (maxElevation - minElevation) > maxGroundStep_ )
   {
-    std::cout << "Large elevation change: " << (maxElevation - minElevation) << std::endl;
+    //std::cout << "Large elevation change: " << (maxElevation - minElevation) << std::endl;
     return false;
   }
 

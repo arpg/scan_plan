@@ -246,6 +246,13 @@ graph::~graph()
 }
 
 // ***************************************************************************
+void graph::remove_frontier(const Eigen::Vector3d& pos)
+{
+  graph* gPtr = this;
+  frontiers_.remove_if( [gPtr, &pos](const frontier& front) -> bool {return ( (gPtr->get_pos(front.vertDesc)-pos).lpNorm<1>() < 0.001 );} ); // lambda expression
+}
+
+// ***************************************************************************
 void graph::update_frontiers_vol_gain()
 {
   if(frontiers_.empty())
