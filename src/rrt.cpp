@@ -1,21 +1,19 @@
 #include "rrt.h"
 
 // ***************************************************************************
-rrt::rrt(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist, double radRob, int failItr, DynamicEDTOctomap* octDist)
-{
-  octDist_ = octDist;
-  init(nNodes, minBnds, maxBnds, radNear, delDist, radRob, failItr);
-}
-
-// ***************************************************************************
-void rrt::init(int nNodes, double minBnds[3], double maxBnds[3], double radNear, double delDist, double radRob, int failItr)
+rrt::rrt(int nNodes, const std::vector<double>& minBnds, const std::vector<double>& maxBnds, double radNear, double delDist, double radRob, double succRad, int failItr, octomap_man* octMan)
 {
   posNds_.resize(nNodes,3);
   cstNds_.resize(nNodes);
   idPrnts_.resize(nNodes);
 
-  std::memcpy(minBnds_, minBnds, sizeof(double)*3);
-  std::memcpy(maxBnds_, maxBnds, sizeof(double)*3);
+  minBnds_[0] = minBnds[0];
+  minBnds_[1] = minBnds[1];
+  minBnds_[2] = minBnds[2];
+
+  maxBnds_[0] = maxBnds[0];
+  maxBnds_[1] = maxBnds[1];
+  maxBnds_[2] = maxBnds[2];
 
   radNear_ = radNear;
   nearNds_.reserve(nNodes);
@@ -24,14 +22,18 @@ void rrt::init(int nNodes, double minBnds[3], double maxBnds[3], double radNear,
   nNodes_ = nNodes;
 
   radRob_ = radRob;
+  succRad_ = succRad;
 
   failItr_ = failItr;
+
+  octMan_ = octMan;
 }
+
 // ***************************************************************************
-void rrt::set_bounds(double minBnds[3], double maxBnds[3])
+void rrt::set_bounds(const Eigen::Vector3d& minBnds, const Eigen::Vector3d& maxBnds)
 {
-  std::memcpy(minBnds_, minBnds, sizeof(double)*3);
-  std::memcpy(maxBnds_, maxBnds, sizeof(double)*3);
+  minBnds_[0] = minBnds(0); minBnds_[1] = minBnds(1); minBnds_[2] = minBnds(2);
+  maxBnds_[0] = maxBnds(0); maxBnds_[1] = maxBnds(1); maxBnds_[2] = maxBnds(2);
 }
 
 // ***************************************************************************
@@ -139,14 +141,14 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
       posRand = rand_pos(minBnds_, maxBnds_, posGoal);
     else
       posRand = rand_pos(minBnds_, maxBnds_);
-    //std::cout << "Drawn random node at position " << posRand.transpose() << std::endl;
+   // std::cout << "Drawn random node at position " << posRand.transpose() << std::endl;
 
     int idNearest = find_nearest(posRand);
     Eigen::Vector3d posNearest = posNds_.row(idNearest);
-    //std::cout << "Nearest node found at position " << posNearest.transpose() << std::endl;
+   // std::cout << "Nearest node found at position " << posNearest.transpose() << std::endl;
 
     Eigen::Vector3d posNew = steer(posNearest, posRand, delDist_);
-    //std::cout << "New node at position " << posNew.transpose() << std::endl;
+   // std::cout << "New node at position " << posNew.transpose() << std::endl;
 
     //getchar();
 
@@ -156,7 +158,7 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
       std::cout << "No solution found in max iterations!" << std::endl;
       break;
     }
-    if ( u_coll(posNearest, posNew) )
+    if ( octMan_->u_coll(posNearest, posNew) || octMan_->u_coll_with_update(posNew) ) // project new node to base_link height above ground if "ground"
       continue;
     itr = 0;
 
@@ -214,7 +216,7 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
       }
     }
 
-    if (posRoot != posGoal && (posNds_.row(actNds_-1).transpose() - posGoal).squaredNorm() < pow(radRob_*4,2) ) // assuming succRad = radRob_*4
+    if (posRoot != posGoal && (posNds_.row(actNds_-1) - posGoal.transpose()).squaredNorm() < pow(succRad_,2) ) // assuming succRad = radRob_*4
       return actNds_-1;
 
   } // end while
@@ -272,7 +274,7 @@ Eigen::Vector3d rrt::rand_pos(double* min, double* max)
 int rrt::find_nearest(Eigen::Vector3d posRand)
 {
   Eigen::Index minIndx;
-  ( posNds_.topRows(actNds_).rowwise() - posRand.transpose() ).rowwise().squaredNorm().minCoeff(&minIndx);
+  ( posNds_.topRows(actNds_).rowwise() - posRand.transpose() ).rowwise().norm().minCoeff(&minIndx);
 
   return minIndx;
 }
@@ -290,7 +292,7 @@ void rrt::find_near(Eigen::Vector3d posNew, double rad)
 
     if ( nearNd.cstLnk > rad )
       continue;
-    if ( u_coll( posNds_.row(i), posNew ) )
+    if ( octMan_->u_coll( posNds_.row(i), posNew ) )
       continue;
 
     nearNd.cstNd = cstNds_(i);
@@ -318,50 +320,8 @@ Eigen::Vector3d rrt::steer(Eigen::Vector3d posFrom, Eigen::Vector3d posTowards, 
 }
 
 // ***************************************************************************
-bool rrt::u_coll(Eigen::Vector3d pos1, Eigen::Vector3d pos2)
-{
-  double delLambda = 0.2;
-
-  double lambda = 0;
-  Eigen::Vector3d pos;
-  while(lambda <= 1)
-  {
-    pos = (1-lambda)*pos1 + lambda*pos2; 
-
-    if ( u_coll_octomap(pos, radRob_, octDist_) && (pos - posRoot_).norm() > radRob_ )
-      return true;
-
-    lambda += delLambda;
-  }
-
-  return false;
-}
-
-// ***************************************************************************
-bool rrt::u_coll_octomap(Eigen::Vector3d pos, double radRob, DynamicEDTOctomap* octDist)
-{
-  //std::cout << "Coll check for position" << pos << std::endl;
-  double distObs = octDist->getDistance ( octomap::point3d( pos(0), pos(1), pos(2) ) );
-  //std::cout << "Distance from the map" << distObs << std::endl;
-
-  if ( distObs == DynamicEDTOctomap::distanceValue_Error )
-    return true;
-
-  if ( distObs <= radRob )
-    return true;
-
-  return false;
-}
-
-// ***************************************************************************
 rrt::~rrt()
 {
-}
-
-// ***************************************************************************
-void rrt::update_oct_dist(DynamicEDTOctomap* octDist)
-{
-  octDist_ = octDist;
 }
 
 // ***************************************************************************
@@ -392,40 +352,100 @@ void rrt::print_tree()
 // ***************************************************************************
 void rrt::plot_tree()
 {
-  matplotlibcpp::show();
+  //matplotlibcpp::show();
 
-  std::vector<double> vecX(2);
-  std::vector<double> vecY(2);
+  //std::vector<double> vecX(2);
+  //std::vector<double> vecY(2);
 
-  for (int i=0; i<actNds_; i++)
-  {
-    vecX[0] = posNds_(idPrnts_[i],0); vecX[1] = posNds_(i,0);
-    vecY[0] = posNds_(idPrnts_[i],1); vecY[1] = posNds_(i,1);
+  //for (int i=0; i<actNds_; i++)
+  //{
+  //  vecX[0] = posNds_(idPrnts_[i],0); vecX[1] = posNds_(i,0);
+  //  vecY[0] = posNds_(idPrnts_[i],1); vecY[1] = posNds_(i,1);
 
-    matplotlibcpp::plot(vecX,vecY, "b--");
-  }
+  //  matplotlibcpp::plot(vecX,vecY, "b--");
+  //}
 
-  matplotlibcpp::xlim(minBnds_[0], maxBnds_[0]);
-	matplotlibcpp::ylim(minBnds_[1], maxBnds_[1]);
+ // matplotlibcpp::xlim(minBnds_[0], maxBnds_[0]);
+	//matplotlibcpp::ylim(minBnds_[1], maxBnds_[1]);
 
-  matplotlibcpp::show(false);
+ // matplotlibcpp::show(false);
 	
 }
 // ***************************************************************************
 void rrt::plot_path(Eigen::MatrixXd path)
 {
-  std::vector<double> vecX(2);
-  std::vector<double> vecY(2);
-  for (int i=0; i<(path.rows()-1); i++)
-  {
-    vecX[0] = path(i,0); vecX[1] = path(i+1,0);
-    vecY[0] = path(i,1); vecY[1] = path(i+1,1);
+  //std::vector<double> vecX(2);
+  //std::vector<double> vecY(2);
+  //for (int i=0; i<(path.rows()-1); i++)
+  //{
+  //  vecX[0] = path(i,0); vecX[1] = path(i+1,0);
+   // vecY[0] = path(i,1); vecY[1] = path(i+1,1);
 
-    matplotlibcpp::plot(vecX,vecY, "r");
-  }
-  matplotlibcpp::show(false);
+  //  matplotlibcpp::plot(vecX,vecY, "r");
+  //}
+  //matplotlibcpp::show(false);
 }
 // ***************************************************************************
+void rrt::publish_viz(ros::Publisher& vizPub, std::string frameId)
+{
+  std::vector<int> idLeaves = get_leaves();
+
+  visualization_msgs::Marker tree;
+  tree.header.frame_id = frameId;
+  tree.header.stamp = ros::Time::now();
+  tree.ns = "tree";
+  tree.id = 0;
+  tree.type = visualization_msgs::Marker::LINE_LIST;
+  tree.action = visualization_msgs::Marker::ADD;
+  tree.pose.orientation.w = 1;
+  geometry_msgs::Vector3 scale;
+	scale.x = 0.05;
+	scale.y = 0.05;
+	scale.z = 0.05;
+	tree.scale = scale;
+  tree.color.r = 0;
+  tree.color.g = 0;
+  tree.color.b = 1.0;
+  tree.color.a = 1.0;
+
+  std_msgs::ColorRGBA color;
+
+  for(int i=0; i<idLeaves.size(); i++)
+  {
+    Eigen::MatrixXd path = get_path(idLeaves[i]);
+    for(int j=0; j<(path.rows()-1); j++)
+    {
+      geometry_msgs::Point vertex;
+      vertex.x = path(j,0);
+      vertex.y = path(j,1);
+      vertex.z = path(j,2);
+
+      color.r = 0; color.g = 0; color.b = 1.0; color.a = 1.0;
+      tree.colors.push_back(color);
+
+      tree.points.push_back(vertex);
+      vertex.x = path(j+1,0);
+      vertex.y = path(j+1,1);
+      vertex.z = path(j+1,2);
+      tree.points.push_back(vertex);
+
+      color.r = 0; color.g = 0; color.b = 1.0; color.a = 1.0;
+      tree.colors.push_back(color);
+    }
+  }
+
+  visualization_msgs::MarkerArray vizMsg;
+  vizMsg.markers.push_back(tree);
+  
+  vizPub.publish(vizMsg);
+}
+
+// ***************************************************************************
+double rrt::get_del_dist()
+{
+  return delDist_;
+}
+
 
 // ***************************************************************************
 

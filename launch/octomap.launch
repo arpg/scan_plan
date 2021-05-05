@@ -1,12 +1,27 @@
 <launch>
-	<node pkg="octomap_server" type="octomap_server_node" name="octomap_server">
+
+  <arg name="mav_name" default="$(env ROS_NAMESPACE)" />
+  <arg name="up_cam_name" default="$(env TOF_UP_NAME)"/>
+	<arg name="down_cam_name" default="$(env TOF_DOWN_NAME)"/>
+
+  <node name="relay_ouster" type="relay" pkg="topic_tools" args="/$(arg mav_name)/points /$(arg mav_name)/vb_cloud"/>
+  <node name="relay_tof_up" type="relay" pkg="topic_tools" args="/$(arg mav_name)/$(arg up_cam_name)/depth/points /$(arg mav_name)/vb_cloud"/>
+  <node name="relay_tof_down" type="relay" pkg="topic_tools" args="/$(arg mav_name)/$(arg down_cam_name)/depth/points /$(arg mav_name)/vb_cloud"/>
+
+	<node pkg="octomap_server" type="octomap_server_node" name="octomap_server" clear_params="true">
 		<param name="resolution" value="0.15" />
 		
 		<param name="frame_id" type="string" value="world" />
 		
 		<param name="sensor_model/max_range" value="10.0" />
 		
-		<remap from="cloud_in" to="/A01/points" /> 
+    <!-- param name="filter_ground" value="true"/>
+    <param name="ground_filter/distance" value="0.1"/>
+    <param name="ground_filter/angle" value="0.04"/>
+    <param name="ground_filter/plane_distance" value="0.2"/>
+    <param name="base_frame_id" value="A01/base_link"/ -->
+
+		<remap from="cloud_in" to="/$(arg mav_name)/vb_cloud" /> 
 	
 	</node>
 
@@ -15,9 +30,9 @@
 		
 		<param name="frame_id" type="string" value="world" />
 		
-		<param name="sensor_model/max_range" value="2.0" />
+		<param name="sensor_model/max_range" value="2.5" />
 		
-		<remap from="cloud_in" to="/A01/front/depth/points" /> 
+		<remap from="cloud_in" to="/A01/vb_cloud" /> 
 	
 	</node>
 </launch>
