@@ -70,8 +70,6 @@ private:
 
   uint8_t isInitialized_;
 
-  double radRob_; // max dist to obs to declare collision
-
   ros::Timer timerReplan_;
   double timeIntReplan_;
 

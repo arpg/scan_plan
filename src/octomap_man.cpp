@@ -1,12 +1,14 @@
 #include "octomap_man.h"
 
 // ***************************************************************************
-octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround)
+octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double robWidth, double robLength, double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround)
 {
   maxDistEsdf_ = maxDistEsdf;
   esdfUnknownAsOccupied_ = esdfUnknownAsOccupied;
   vehicleType_ = vehicleType;
-  radRob_ = radRob;
+  robWidth_ = robWidth;
+  robLength_ = robLength;
+  radRob_ = std::max(robWidth, robLength) / 2;
   maxGroundRoughness_ = maxGroundRoughness;
   maxGroundStep_ = maxGroundStep;
   groundPlaneSearchDist_ = groundPlaneSearchDist;
@@ -48,12 +50,13 @@ bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector
 
   double lambda = 0;
   Eigen::Vector3d pos;
+  double yaw = atan2( ( pos2(1) - pos1(1) ) , ( pos2(0) - pos1(0) ) );
 
   while(lambda <= 1)
   {
     pos = (1-lambda)*pos1 + lambda*pos2; 
 
-    if ( u_coll(pos) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) )
+    if ( u_coll( Eigen::Vector4d(pos(0),pos(1),pos(2),yaw) ) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) )
       return true; // under-collision
 
     lambda += delLambda;
@@ -75,7 +78,7 @@ bool octomap_man::u_coll_air(const Eigen::Vector3d& pos1, const Eigen::Vector3d&
   {
     pos = (1-lambda)*pos1 + lambda*pos2; 
 
-    if ( u_coll(pos) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) ) // if the point is outside of robot's radius
+    if ( u_coll( Eigen::Vector4d(pos(0),pos(1),pos(2),0) ) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) ) // if the point is outside of robot's radius
       return true;
 
     lambda += delLambda;
@@ -85,19 +88,20 @@ bool octomap_man::u_coll_air(const Eigen::Vector3d& pos1, const Eigen::Vector3d&
 }
 
 // ***************************************************************************
-bool octomap_man::u_coll_with_update(Eigen::Vector3d& pos)
+bool octomap_man::u_coll_with_update(Eigen::Vector4d& pose) // x,y,z,theta
 {
   if(vehicleType_ == "air")
-    return u_coll_air(pos); // assuming u_coll_air doesnt change the argument
+    return u_coll_air(pose); // assuming u_coll_air doesnt change the argument
   else
   {
     Eigen::Vector3d avgGroundPt;
-    bool returnStatus = cast_pos_down(pos, avgGroundPt);
+    bool returnStatus = cast_pose_down(pose, avgGroundPt);
 
     if(returnStatus) // if successful projection
     {
-      pos = avgGroundPt;
-      pos(2) += baseFrameHeightAboveGround_;
+      pose(0) = avgGroundPt(0);
+      pose(1) = avgGroundPt(1);
+      pose(2) = avgGroundPt(2) + baseFrameHeightAboveGround_;
     }
 
     return !returnStatus; // successful projection means NOT under-collision
@@ -105,21 +109,23 @@ bool octomap_man::u_coll_with_update(Eigen::Vector3d& pos)
 }
 
 // ***************************************************************************
-bool octomap_man::u_coll(const Eigen::Vector3d& pos)
+bool octomap_man::u_coll(const Eigen::Vector4d& pose) // x,y,z,theta
 {
   if(vehicleType_ == "air")
-    return u_coll_air(pos);
+    return u_coll_air(pose);
   else
   {
     Eigen::Vector3d avgGroundPt;
-    return !cast_pos_down(pos, avgGroundPt); // successful projection means NOT under-collision
+    return !cast_pose_down(pose, avgGroundPt); // successful projection means NOT under-collision
   }
 }
 
 // ***************************************************************************
-bool octomap_man::u_coll_air(const Eigen::Vector3d& pos)
+bool octomap_man::u_coll_air(const Eigen::Vector4d& pose) // x,y,z,theta
 {
-  double distObs = octDist_->getDistance ( octomap::point3d( pos(0), pos(1), pos(2) ) );
+  //Eigen::Vector3d pos( pose(0), pose(1), pose(2) );
+
+  double distObs = octDist_->getDistance ( octomap::point3d( pose(0), pose(1), pose(2) ) );
 
   if ( distObs == DynamicEDTOctomap::distanceValue_Error )
     return true;
@@ -131,23 +137,27 @@ bool octomap_man::u_coll_air(const Eigen::Vector3d& pos)
 }
 
 // ***************************************************************************
-bool octomap_man::cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avgGroundPt)
+bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& avgGroundPt)
 {
   double minElevation, maxElevation;
-  return cast_pos_down(pos, avgGroundPt, minElevation, maxElevation);
+  return cast_pose_down(pose, avgGroundPt, minElevation, maxElevation);
 }
 
 // ***************************************************************************
-bool octomap_man::cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avgGroundPt, double& minElevation, double& maxElevation)
+bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& avgGroundPt, double& minElevation, double& maxElevation)
 {
   // false: unsuccessful projection, true: successful projection
   // avgGroundPt, minElevation, maxElevation only valid if true is returned
+  // pose: x,y,z,yaw
 
   if( surfCoordsBase_.rows() < 1 ) // if the robot is represented by no surface shadow, then return unsuccessful projection
   {
     std::cout << "Ground robot half-width is zero :( " << std::endl; 
     return false;
   }
+
+  Eigen::Vector3d pos( pose(0), pose(1), pose(2) );
+  double yaw = pose(3);
 
   const double successfulProjectionsPercent = 0.10;  // if projections success is smaller, it's a cliff or severe decline so return false in that case
   int successfulProjections = 0;
@@ -158,7 +168,7 @@ bool octomap_man::cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avg
   bool isFirst = true;
   for(int i=0; i<surfCoordsBase_.rows(); i++)
   {
-    int castDownStatus = cast_ray_down( surfCoordsBase_.row(i) + pos.transpose(), currGroundPt );
+    int castDownStatus = cast_ray_down( rotz(surfCoordsBase_.row(i), yaw) + pos, currGroundPt );
 
     if( castDownStatus == 0 ) // under-collision
       return false;
@@ -198,6 +208,18 @@ bool octomap_man::cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avg
     avgGroundPt /= double(successfulProjections);
     return true;
   }
+}
+
+// ***************************************************************************
+Eigen::Vector3d octomap_man::rotz(const Eigen::Vector3d& vecIn, const double& psi) // rotates vecIn(x,y,z) around z axis by angle psi 
+{
+  Eigen::Vector3d vecOut;
+
+  vecOut(0) = vecIn(0) * cos(psi) - vecIn(1) * sin(psi);
+  vecOut(1) = vecIn(0) * sin(psi) + vecIn(1) * cos(psi);
+  vecOut(2) = vecIn(2);
+
+  return vecOut;
 }
 
 // ***************************************************************************
@@ -292,16 +314,17 @@ void octomap_man::update_octree(octomap::OcTree* octTree)
     return;
 
   // creating robot shadow in base frame to be projected to the ground
-  int robLenVoxs = ceil(2*radRob_ / octTree_->getResolution());
+  int robWidVoxs = ceil(robWidth_ / octTree_->getResolution());
+  int robLenVoxs = ceil(robLength_ / octTree_->getResolution());
 
-  surfCoordsBase_.resize( pow(robLenVoxs,2), 3 ); // assuming square ground projection of the robot
+  surfCoordsBase_.resize( robWidVoxs*robLenVoxs, 3 ); // assuming rectangular ground projection of the robot
 
   for(int i=0; i<robLenVoxs; i++) // rows
-    for(int j=0; j<robLenVoxs; j++) // columns
+    for(int j=0; j<robWidVoxs; j++) // columns
     {
-      surfCoordsBase_(i*robLenVoxs+j,0) = -radRob_ + double(j)*octTree_->getResolution();
-      surfCoordsBase_(i*robLenVoxs+j,1) = -radRob_ + double(i)*octTree_->getResolution();
-      surfCoordsBase_(i*robLenVoxs+j,2) = 0;
+      surfCoordsBase_(i*robWidVoxs+j,0) = -robWidth_/2 + double(j)*octTree_->getResolution();
+      surfCoordsBase_(i*robWidVoxs+j,1) = -robLength_/2 + double(i)*octTree_->getResolution();
+      surfCoordsBase_(i*robWidVoxs+j,2) = 0;
     }
 
   isInitialized_ = true;

@@ -1,7 +1,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-rrt::rrt(int nNodes, const std::vector<double>& minBnds, const std::vector<double>& maxBnds, double radNear, double delDist, double radRob, double succRad, int failItr, octomap_man* octMan)
+rrt::rrt(int nNodes, const std::vector<double>& minBnds, const std::vector<double>& maxBnds, double radNear, double delDist, double succRad, int failItr, octomap_man* octMan)
 {
   posNds_.resize(nNodes,3);
   cstNds_.resize(nNodes);
@@ -21,7 +21,6 @@ rrt::rrt(int nNodes, const std::vector<double>& minBnds, const std::vector<doubl
   delDist_ = delDist;
   nNodes_ = nNodes;
 
-  radRob_ = radRob;
   succRad_ = succRad;
 
   failItr_ = failItr;
@@ -158,8 +157,15 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
       std::cout << "No solution found in max iterations!" << std::endl;
       break;
     }
-    if ( octMan_->u_coll(posNearest, posNew) || octMan_->u_coll_with_update(posNew) ) // project new node to base_link height above ground if "ground"
+
+    double yawNew = atan2( ( posNew(1) - posNearest(1) ) , ( posNew(0) - posNearest(0) ) );
+    Eigen::Vector4d poseNew(posNew(0),posNew(1),posNew(2),yawNew);
+    if ( octMan_->u_coll(posNearest, posNew) || octMan_->u_coll_with_update( poseNew ) ) // project new node to base_link height above ground if "ground"
       continue;
+    posNew(0) = poseNew(0);
+    posNew(1) = poseNew(1);
+    posNew(2) = poseNew(2);
+
     itr = 0;
 
     //std::cout << "Nearest to new line is collision-free" << std::endl;

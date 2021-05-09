@@ -42,7 +42,6 @@ private:
   double maxBnds_[3];
 
   double radNear_;
-  double radRob_; // robot radius
   double succRad_;
 
   // outputs of 'find_near' function, avoiding repeated allocation/deallocation
@@ -56,7 +55,7 @@ private:
  
 public:
   ~rrt();
-  rrt(int, const std::vector<double>&, const std::vector<double>&, double, double, double, double, int, octomap_man*);
+  rrt(int, const std::vector<double>&, const std::vector<double>&, double, double, double, int, octomap_man*);
   void init(int, std::vector<double>, std::vector<double>, double, double, double, int);
   
 

@@ -107,7 +107,7 @@ void scan_plan::setup_rrt()
   while(!nh_->getParam("succ_rad_rrt", rrtSuccRad));
 
   ROS_INFO("%s: Setting up local tree ...", nh_->getNamespace().c_str());
-  rrtTree_ = new rrt(rrtNNodes, minBnds, maxBnds, rrtRadNear, rrtDelDist, radRob_, rrtSuccRad, rrtFailItr, octMan_);  
+  rrtTree_ = new rrt(rrtNNodes, minBnds, maxBnds, rrtRadNear, rrtDelDist, rrtSuccRad, rrtFailItr, octMan_);  
 }
 
 // ***************************************************************************
@@ -134,7 +134,7 @@ void scan_plan::setup_graph()
   homePos_(1) = homePos[1];
   homePos_(2) = homePos[2];
 
-  graph_ = new graph(homePos_, graphRadNear, graphRadNearest, radRob_, minVolGain, worldFrameId_, octMan_, minManDistFrontier, entranceMin, entranceMax, cGain, manRadAvoidFrontier);
+  graph_ = new graph(homePos_, graphRadNear, graphRadNearest, minVolGain, worldFrameId_, octMan_, minManDistFrontier, entranceMin, entranceMax, cGain, manRadAvoidFrontier);
 }
 
 // ***************************************************************************
@@ -155,13 +155,14 @@ void scan_plan::setup_octomap()
   ROS_INFO("%s: Waiting for octomap params ...", nh_->getNamespace().c_str());
 
   std::string vehicleType;
-  double maxGroundRoughness, maxGroundStep, maxDistEsdf, groundPlaneSearchDist, baseFrameHeightAboveGround;
+  double maxGroundRoughness, maxGroundStep, maxDistEsdf, groundPlaneSearchDist, baseFrameHeightAboveGround, robWidth, robLength;
   bool esdfUnknownAsOccupied;
 
   while(!nh_->getParam("esdf_max_dist", maxDistEsdf));
   while(!nh_->getParam("esdf_unknown_as_occupied", esdfUnknownAsOccupied));
   while(!nh_->getParam("vehicle_type", vehicleType)); // "air", "ground"
-  while(!nh_->getParam("robot_radius", radRob_));
+  while(!nh_->getParam("robot_width", robWidth));
+  while(!nh_->getParam("robot_length", robLength));
   while(!nh_->getParam("max_ground_roughness", maxGroundRoughness)); // [0, 180], angle from postive z
   while(!nh_->getParam("max_ground_step", maxGroundStep)); // [epsilon,inf]
   while(!nh_->getParam("ground_plane_search_distance", groundPlaneSearchDist));
@@ -169,7 +170,7 @@ void scan_plan::setup_octomap()
   
 
   ROS_INFO("%s: Setting up octomap manager ...", nh_->getNamespace().c_str());
-  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, vehicleType, radRob_, maxGroundRoughness*(pi_/180), maxGroundStep, groundPlaneSearchDist, mapSensors_, baseFrameHeightAboveGround);
+  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, vehicleType, robWidth, robLength, maxGroundRoughness*(pi_/180), maxGroundStep, groundPlaneSearchDist, mapSensors_, baseFrameHeightAboveGround);
 }
 
 // ***************************************************************************

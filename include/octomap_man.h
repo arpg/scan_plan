@@ -20,7 +20,11 @@ private:
 
   double maxDistEsdf_;
   bool esdfUnknownAsOccupied_;
-  double radRob_; // radius if "air", half-width if "ground"
+
+  double radRob_; // half of the maximum dimension of the robot
+  double robWidth_; 
+  double robLength_;
+
   double maxGroundRoughness_; // only for "ground" for now 
   double maxGroundStep_; // only for "ground" for now, determines the maximum step size on the ground that the robot is able to go over
 
@@ -37,25 +41,27 @@ private:
  
 public:
   ~octomap_man();
-  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double radRob, double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double);
+  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double robWidth, double robLength,  double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double);
 
-  double volumetric_gain(const Eigen::Vector3d& basePos);
+  double volumetric_gain(const Eigen::Vector3d&);
 
-  bool u_coll(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);
-  bool u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);
-  bool u_coll_air(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);
+  bool u_coll(const Eigen::Vector3d&, const Eigen::Vector3d&);
+  bool u_coll_ground(const Eigen::Vector3d&, const Eigen::Vector3d&);
+  bool u_coll_air(const Eigen::Vector3d&, const Eigen::Vector3d&);
 
-  bool u_coll(const Eigen::Vector3d& pos);
-  bool u_coll_with_update(Eigen::Vector3d& pos);
-  bool u_coll_air(const Eigen::Vector3d& pos);
+  bool u_coll(const Eigen::Vector4d&);
+  bool u_coll_with_update(Eigen::Vector4d&);
+  bool u_coll_air(const Eigen::Vector4d&);
 
-  bool cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avgGroundPt);
-  bool cast_pos_down(const Eigen::Vector3d& pos, Eigen::Vector3d& avgGroundPt, double& minElevation, double& maxElevation);
+  bool cast_pose_down(const Eigen::Vector4d&, Eigen::Vector3d& avgGroundPt);
+  bool cast_pose_down(const Eigen::Vector4d&, Eigen::Vector3d& avgGroundPt, double& minElevation, double& maxElevation);
   int cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& groundPt);
 
   void update_esdf(const Eigen::Vector3d& minBnds, const Eigen::Vector3d& maxBnds);
   void update_octree(octomap::OcTree* octTree);
   void update_robot_pos(const Eigen::Vector3d&);
+
+  Eigen::Vector3d rotz(const Eigen::Vector3d&, const double&);
 };
 
 #endif

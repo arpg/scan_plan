@@ -2,7 +2,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax, const std::vector<double>& cGain, const double& manDistAvoidFrontier)
+graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax, const std::vector<double>& cGain, const double& manDistAvoidFrontier)
 {
   adjList_ = new BiDirectionalGraph;
 
@@ -18,7 +18,6 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double 
 
   radNearest_ = radNearest;
   radNear_ = radNear;
-  radRob_ = radRob;
   frameId_ = frameId;
   minVolGain_ = minVolGain;
   minManDistFrontier_ = minManDistFrontier;
@@ -38,8 +37,6 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double 
   }
 
   octMan_ = octMan;
-
-  //TODO: radRob_ and radNear_ assignments 
 }
 
 // ***************************************************************************

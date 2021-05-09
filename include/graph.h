@@ -54,7 +54,6 @@ private:
 
   double radNear_;
   double radNearest_;
-  double radRob_; // robot radius
   double minVolGain_;
   
   octomap_man* octMan_;
@@ -81,7 +80,7 @@ private:
  
 public:
   ~graph();
-  graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double radRob, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>&, const double& );
+  graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>&, const double& );
   
   bool add_vertex(const gvert);
   bool u_coll(const gvert, const gvert);  

@@ -166,8 +166,12 @@ bool path_man::is_staircase(const Eigen::MatrixXd& path, const double& minStepHe
   std::vector<double> heights; // heights at which the elevation changes are recorded
 
   for (int i=0; i<path.rows(); i++)
-    if( octMan_->cast_pos_down(path.row(i), avgGroundPt, minElevation, maxElevation) && abs(maxElevation - minElevation) >= minStepHeight )
+  {
+    Eigen::Vector3d pos = path.row(i);
+    double yaw = 0; // TODO: GET HEADING FROM PATH, CHECK THIS LOGIC AGAIN BEFORE USING THIS FUNCTION
+    if( octMan_->cast_pose_down( Eigen::Vector4d(pos(0),pos(1),pos(2),yaw), avgGroundPt, minElevation, maxElevation) && abs(maxElevation - minElevation) >= minStepHeight )
       heights.push_back(minElevation);
+  }
 
   if(heights.size() < 1) // there is no staircase on flat ground
     return false;
