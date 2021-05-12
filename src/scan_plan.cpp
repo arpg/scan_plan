@@ -310,7 +310,7 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
     return;
   }
 
-  if( (taskMsg.data == "explore" || taskMsg.data == "Explore") && (status_.mode != plan_status::MODE::LOCALEXP || status_.mode != plan_status::MODE::GLOBALEXP) )
+  if( (taskMsg.data == "explore" || taskMsg.data == "Explore") && (status_.mode != plan_status::MODE::LOCALEXP && status_.mode != plan_status::MODE::GLOBALEXP) )
   {
     if(status_.mode = plan_status::MODE::REPORT) // if transitioning from report mode, then flip the path so the robot goes back to where it came from
     {

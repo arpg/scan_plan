@@ -177,7 +177,7 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
 
     //getchar();
 
-    double cstNew = cstNds_(idNearest) + delDist_;    
+    double cstNew = cstNds_(idNearest) + (posNew-posNearest).norm();    
     int idNew = add_node(posNew, cstNew, idNearest);    
 
     int idMin = idNearest;
