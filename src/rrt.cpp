@@ -160,7 +160,7 @@ int rrt::build(const Eigen::Vector3d posRoot, const Eigen::Vector3d posGoal)
 
     double yawNew = atan2( ( posNew(1) - posNearest(1) ) , ( posNew(0) - posNearest(0) ) );
     Eigen::Vector4d poseNew(posNew(0),posNew(1),posNew(2),yawNew);
-    if ( octMan_->u_coll(posNearest, posNew) || octMan_->u_coll_with_update( poseNew ) ) // project new node to base_link height above ground if "ground"
+    if ( octMan_->u_coll_with_update( poseNew ) || octMan_->u_coll(posNearest, posNew) ) // project new node to base_link height above ground if "ground"
       continue;
     posNew(0) = poseNew(0);
     posNew(1) = poseNew(1);
