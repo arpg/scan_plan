@@ -16,7 +16,7 @@ octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::st
 
   mapSensors_ = mapSensors;
 
-  isInitialized_ = false; // wait for the first octree to set this to true
+  isInitialized_ = 0x00; // wait for the first octree and ufo msgs to set this to 0x03
 }
 
 // ***************************************************************************
@@ -310,24 +310,29 @@ void octomap_man::update_octree(octomap::OcTree* octTree)
   delete octTree_;
   octTree_ = octTree;
 
-  if(isInitialized_)
+  if( (isInitialized_ & 0x01) == 0x01 )
     return;
 
-  // creating robot shadow in base frame to be projected to the ground
-  int robWidVoxs = ceil(robWidth_ / octTree_->getResolution());
-  int robLenVoxs = ceil(robLength_ / octTree_->getResolution());
+  create_robot_surface(octTree->getResolution());
+  isInitialized_ |= 0x01;
+}
+
+// ***************************************************************************
+void octomap_man::create_robot_surface(const double& voxLen)
+{
+  // creating robot surface in base frame to be projected to the ground
+  int robWidVoxs = ceil(robWidth_ / voxLen);
+  int robLenVoxs = ceil(robLength_ / voxLen);
 
   surfCoordsBase_.resize( robWidVoxs*robLenVoxs, 3 ); // assuming rectangular ground projection of the robot
 
   for(int i=0; i<robLenVoxs; i++) // rows
     for(int j=0; j<robWidVoxs; j++) // columns
     {
-      surfCoordsBase_(i*robWidVoxs+j,0) = -robWidth_/2 + double(j)*octTree_->getResolution();
-      surfCoordsBase_(i*robWidVoxs+j,1) = -robLength_/2 + double(i)*octTree_->getResolution();
+      surfCoordsBase_(i*robWidVoxs+j,0) = -robWidth_/2 + double(j)*voxLen;
+      surfCoordsBase_(i*robWidVoxs+j,1) = -robLength_/2 + double(i)*voxLen;
       surfCoordsBase_(i*robWidVoxs+j,2) = 0;
     }
-
-  isInitialized_ = true;
 }
 
 // ***************************************************************************

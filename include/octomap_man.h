@@ -36,7 +36,7 @@ private:
 
   Eigen::Vector3d robPos_;
 
-  bool isInitialized_ = false;
+  uint8 isInitialized_ = 0x00;
   double baseFrameHeightAboveGround_;
  
 public:
