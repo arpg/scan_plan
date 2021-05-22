@@ -939,11 +939,11 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
 }
 
 // ***************************************************************************
-void scan_plan::goal_cb(const geometry_msgs::PointStamped& goalMsg)
+void scan_plan::goal_cb(const geometry_msgs::PoseStamped& goalMsg)
 {
-  status_.goalPt(0) = goalMsg.point.x;
-  status_.goalPt(1) = goalMsg.point.y;
-  status_.goalPt(2) = goalMsg.point.z;
+  status_.goalPt(0) = goalMsg.pose.position.x;
+  status_.goalPt(1) = goalMsg.pose.position.y;
+  status_.goalPt(2) = goalMsg.pose.position.z;
 
   //status_.mode = plan_status::MODE::GOALPT;
   //timerReplan_.setPeriod(ros::Duration(0.2), false); // don't reset the timer because the goal could be coming in at high frequency

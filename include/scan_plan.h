@@ -115,7 +115,7 @@ public:
   bool update_base_to_world();
   Eigen::Vector3d transform_to_eigen_pos(const geometry_msgs::TransformStamped& transformIn);
   void timer_replan_cb(const ros::TimerEvent&);
-  void goal_cb(const geometry_msgs::PointStamped&);
+  void goal_cb(const geometry_msgs::PoseStamped&);
   bool add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int idLookaheadLeaf, graph* gph) ;
   void octomap_cb(const octomap_msgs::Octomap& octmpMsg);
   Eigen::Vector3d geofence_saturation(const Eigen::Vector3d& posIn);
