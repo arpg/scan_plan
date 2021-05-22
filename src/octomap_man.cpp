@@ -342,6 +342,12 @@ void octomap_man::update_robot_pos(const Eigen::Vector3d& robPos)
 }
 
 // ***************************************************************************
+std::string octomap_man::vehicle_type()
+{
+  return vehicleType_;
+}
+
+// ***************************************************************************
 octomap_man::~octomap_man()
 {
   delete octTree_;

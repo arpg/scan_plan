@@ -97,6 +97,7 @@ private:
   double volGainMonitorDur_; // secs
   double minVolGainLocalPlan_;
   int nTriesLocalPlan_;
+  int nTriesGlobalPlan_;
 
   double endOfPathSuccRad_;
 
@@ -145,6 +146,9 @@ public:
   double path_cost_beta(const Eigen::MatrixXd&, const double&, const double&, double&);
   Eigen::MatrixXd plan_locally(const std::string& costType, const int& nTries, bool = true);
   Eigen::MatrixXd plan_locally(const std::string&, bool = true);  
+
+  int update_local_tree(const Eigen::Vector3d&, const Eigen::Vector3d&);
+  void update_local_tree(const Eigen::Vector3d&);
 };
 
 #endif

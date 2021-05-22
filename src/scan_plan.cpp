@@ -201,6 +201,7 @@ void scan_plan::setup_scan_plan()
   while(!nh_->getParam("vol_gain_monitor_dur_mode_switch", volGainMonitorDur_));
   while(!nh_->getParam("min_vol_gain_local_plan", minVolGainLocalPlan_));
   while(!nh_->getParam("no_of_tries_local_plan", nTriesLocalPlan_));
+  while(!nh_->getParam("no_of_tries_global_plan", nTriesGlobalPlan_));
   while(!nh_->getParam("succ_rad_end_of_path", endOfPathSuccRad_));
 
   geoFenceMin_(0) = geoFenceMin[0];
@@ -519,6 +520,11 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
     }
   }
 
+  if( !pathMan_->validate_path(minCstPath_, localBndsMin_, localBndsMax_) )
+    graph_-> update_occupancy(localBndsMin_, localBndsMax_, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
+  else
+    graph_-> update_occupancy(localBndsMin_, localBndsMax_, true); // if path is obstacle-free update occupany of only occupied edges
+
   //TODO: Generate graph diconnect warning if no path is successfully added to the graph
   // Only add node to the graph if there is no existing node closer than radRob in graph lib, return success in that case since the graph is likely to be connected fine
   // update older node if within robot radius with updated terrain and collision information, the latter may mean taking nodes out of the graph
@@ -599,8 +605,7 @@ Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
   std::cout << "Checking if goal and robot positions are within local bounds of each other" << std::endl;
   if( ((goalPos-robPos-localBndsMin_).array() > 0).all() && ((goalPos-robPos-localBndsMax_).array() < 0).all() ) // if goal is within local bounds of robot, try rrt
   {
-    rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
-    int idLeaf = rrtTree_->build(robPos, goalPos);
+    int idLeaf = update_local_tree(robPos, goalPos);
 
     if(idLeaf != 0) // if a path is found
       return rrtTree_->get_path(idLeaf);
@@ -677,8 +682,7 @@ Eigen::MatrixXd scan_plan::plan_to_graph(const Eigen::Vector3d& fromPos, VertexD
     toVertex = vertices[i];
     Eigen::Vector3d vertexPos = graph_->get_pos(toVertex);
 
-    rrtTree_->set_bounds( geofence_saturation(localBndsMin_+fromPos), geofence_saturation(localBndsMax_+fromPos) );
-    int leafId = rrtTree_->build(fromPos, vertexPos); // using goal-bias rrt to find a path 
+    int leafId = update_local_tree(fromPos, vertexPos); // using goal-bias rrt to find a path 
 
     if( leafId < 1 ) // if root node is returned / if a path is not found
       continue;
@@ -694,16 +698,19 @@ Eigen::MatrixXd scan_plan::plan_to_graph(const Eigen::Vector3d& fromPos, VertexD
 // ***************************************************************************
 Eigen::MatrixXd scan_plan::plan_globally() 
 {
+  // TODO: What if the most recent frontier is not reachable due to some reason, choose the second most recent frontier and so on
+  // TODO: Choose the most recent frontier and the closest one and check which one gives minimum path length 
+  // TODO: Add plan_to_frontier inside graph.cpp and let it deal with the above
+
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
   octMan_->update_robot_pos(robPos);
 
   graph_->update_frontiers_vol_gain();
-  frontier front = graph_->get_best_frontier(robPos);
 
-  if(front.volGain <= 0) // if there is no frontier
+  if( graph_->is_empty_frontiers() )
     return Eigen::MatrixXd(0,0);
-//
+/*
   std::cout << "Connecting to the frontier via a straight line" << std::endl;
   if( !octMan_->u_coll( robPos, graph_->get_pos(front.vertDesc) ) )
   {
@@ -713,23 +720,19 @@ Eigen::MatrixXd scan_plan::plan_globally()
     path.row(1) = graph_->get_pos(front.vertDesc);
     return path;
   }
-//
+*/
   std::cout << "Planning to graph" << std::endl;
   VertexDescriptor vertD1;
   Eigen::MatrixXd minCstPath1 = plan_to_graph(robPos, vertD1);
   if(minCstPath1.rows() < 2)
     return Eigen::MatrixXd(0,0);
 
-  std::cout << "Path to graph non-empty" << std::endl;
-  if(vertD1 == front.vertDesc)
-    return minCstPath1;
-  
-  std::cout << "Source and target vertices validity? " << graph_->is_valid(vertD1) << ", " << graph_->is_valid(front.vertDesc) << std::endl;
-  Eigen::MatrixXd minCstPath2 = graph_->plan_shortest_path(vertD1, front.vertDesc);
+  std::cout << "Path to graph non-empty, planning over graph" << std::endl;
+  Eigen::MatrixXd minCstPath2 = graph_->plan_to_frontier(vertD1, nTriesGlobalPlan_);
 
-  std::cout << "Planning over graph failed" << std::endl;
   if(minCstPath2.rows() < 1)
     return Eigen::MatrixXd(0,0);
+  std::cout << "Planning over graph successful" << std::endl;
 
   std::cout << "Appending paths together" << std::endl;
   Eigen::MatrixXd minCstPath(minCstPath1.rows()+minCstPath2.rows(), 3);
@@ -776,6 +779,26 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, const int& 
 } 
 
 // ***************************************************************************
+void scan_plan::update_local_tree(const Eigen::Vector3d& robPos)
+{
+  if( octMan_->vehicle_type() == "ground" ) // if "ground", clip local bounds from below, assuming base frame is the highest point of the robot
+    rrtTree_->set_bounds( geofence_saturation( localBndsMin_+robPos-Eigen::Vector3d(0,0,localBndsMin_(2)) ), geofence_saturation(localBndsMax_+robPos) );
+  else
+    rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
+  rrtTree_->build(robPos);
+}
+
+// ***************************************************************************
+int scan_plan::update_local_tree(const Eigen::Vector3d& robPos, const Eigen::Vector3d& goalPos)
+{
+  if( octMan_->vehicle_type() == "ground" ) // if "ground", clip local bounds from below, assuming base frame is the highest point of the robot
+    rrtTree_->set_bounds( geofence_saturation( localBndsMin_+robPos-Eigen::Vector3d(0,0,localBndsMin_(2)) ), geofence_saturation(localBndsMax_+robPos) );
+  else
+    rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
+  return rrtTree_->build(robPos, goalPos);
+}
+
+// ***************************************************************************
 Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToGraph) 
 {
   // returns rrt lookahead path, ids of all leaves and of the lookahead path leaf
@@ -789,8 +812,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
   octMan_->update_robot_pos(robPos);
 
-  rrtTree_->set_bounds( geofence_saturation(localBndsMin_+robPos), geofence_saturation(localBndsMax_+robPos) );
-  rrtTree_->build(robPos);
+  update_local_tree(robPos);
 
   idLeaves = rrtTree_->get_leaves();
   disp(idLeaves.size(), "Number of paths found");

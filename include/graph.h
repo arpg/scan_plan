@@ -5,6 +5,7 @@
 #include <eigen3/Eigen/Core>
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/astar_search.hpp>
+#include <boost/graph/filtered_graph.hpp>
 #include <vector>
 #include <random>
 #include <chrono>
@@ -15,6 +16,21 @@
 #include "visualization_msgs/MarkerArray.h"
 #include "geometry_msgs/PoseArray.h"
 #include "ros/ros.h"
+
+#include "path_man.h"
+
+// ***************************************************************************
+// edge predicate function to return true if edge weight is positive 
+template <typename EdgeWeightMap>
+struct positive_edge_weight {
+  positive_edge_weight() { }
+  positive_edge_weight(EdgeWeightMap weight) : m_weight(weight) { }
+  template <typename Edge>
+  bool operator()(const Edge& e) const {
+    return 0 < get(m_weight, e);
+  }
+  EdgeWeightMap m_weight;
+};
 
 // ***************************************************************************
 struct gvert
@@ -31,9 +47,12 @@ struct gvert
 // *************************************************************************** // TODO: Checkout other graph types, mutable, undirected? Any faster?
 typedef boost::property<boost::edge_weight_t, int> EdgeWeightProperty;
 typedef boost::adjacency_list<boost::listS, boost::vecS, boost::undirectedS, gvert, EdgeWeightProperty > BiDirectionalGraph;
+typedef boost::property_map<BiDirectionalGraph, boost::edge_weight_t>::type EdgeWeightMap;
+typedef boost::filtered_graph<BiDirectionalGraph, positive_edge_weight<EdgeWeightMap> > FilteredGraph;
 typedef boost::graph_traits<BiDirectionalGraph>::edge_iterator EdgeIterator;
 typedef boost::graph_traits<BiDirectionalGraph>::vertex_iterator VertexIterator;
 typedef boost::graph_traits<BiDirectionalGraph>::vertex_descriptor VertexDescriptor;
+typedef boost::graph_traits<BiDirectionalGraph>::edge_descriptor EdgeDescriptor;
 
 // ***************************************************************************
 struct frontier
@@ -82,7 +101,8 @@ public:
   ~graph();
   graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>&, const double& );
   
-  bool add_vertex(const gvert);
+  bool add_vertex(const gvert&);
+  bool add_vertex(const gvert&, VertexDescriptor&);
   bool u_coll(const gvert, const gvert);  
   void publish_viz(ros::Publisher&);
   void publish_frontiers(ros::Publisher&);
@@ -90,7 +110,7 @@ public:
 
   std::vector<VertexDescriptor> find_vertices_inside_box(const Eigen::Vector3d&, const Eigen::Vector3d&);
   Eigen::MatrixXd plan_shortest_path(const VertexDescriptor& fromVertex, const VertexDescriptor& toVertex);
-  frontier get_best_frontier(const Eigen::Vector3d&);
+  frontier get_recent_frontier(const Eigen::Vector3d&);
 
   double volumetric_gain(Eigen::Vector3d, octomap::OcTree*, double);
   int n_unseen_neighbors(octomap::OcTree*, octomap::OcTreeKey*);
@@ -110,6 +130,13 @@ public:
   std::forward_list<frontier> ignore_avoid_frontiers();
   bool is_avoid_frontier(const Eigen::Vector3d&);
   void remove_frontier(const Eigen::Vector3d&);
+
+  bool in_bounds(const EdgeDescriptor& edgeD, const Eigen::Vector3d& minPt, const Eigen::Vector3d& maxPt);
+  void update_occupancy(const Eigen::Vector3d& minPt, const Eigen::Vector3d& maxPt, const bool& occupiedOnly);
+  Eigen::Vector3d get_src_pos(const EdgeDescriptor& edgeD);
+  Eigen::Vector3d get_tgt_pos(const EdgeDescriptor& edgeD);
+  frontier closest_frontier(const Eigen::Vector3d& ptIn, double& dist);
+  Eigen::MatrixXd plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries);
 };
 
 // ***************************************************************************

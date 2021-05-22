@@ -18,7 +18,7 @@ private:
   
 public:
   path_man(const double& minPathLen, octomap_man* octMan);
-  bool validate_path(Eigen::MatrixXd& path);
+  bool validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd);
   bool path_len_check(const Eigen::MatrixXd& path);
 
 
@@ -29,6 +29,7 @@ public:
   static std::pair<double, double> mean_heading_height_err(double yawIn, double heightIn, const Eigen::MatrixXd& pathIn);
   static double path_to_path_dist(const Eigen::MatrixXd& path1, const Eigen::MatrixXd& path2);
   static double point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::MatrixXd& pathIn);
+  bool in_bounds(const Eigen::Vector3d&, const Eigen::Vector3d&, const Eigen::Vector3d&);
 
   Eigen::MatrixXd interpolate(const Eigen::MatrixXd& path, const double& maxSpacePts);
   bool is_staircase(const Eigen::MatrixXd& path, const double& minStepHeight, const int& minNSteps);

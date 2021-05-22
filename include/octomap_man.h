@@ -36,7 +36,7 @@ private:
 
   Eigen::Vector3d robPos_;
 
-  uint8 isInitialized_ = 0x00;
+  uint8_t isInitialized_ = 0x00;
   double baseFrameHeightAboveGround_;
  
 public:
@@ -62,6 +62,10 @@ public:
   void update_robot_pos(const Eigen::Vector3d&);
 
   Eigen::Vector3d rotz(const Eigen::Vector3d&, const double&);
+
+  void create_robot_surface(const double&);
+
+  std::string vehicle_type();
 };
 
 #endif

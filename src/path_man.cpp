@@ -113,7 +113,7 @@ double path_man::point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::Ma
 }
 
 // ***************************************************************************
-bool path_man::validate_path(Eigen::MatrixXd& path)
+bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd)
 {
   // returns false if path length changes, and the modified path
 
@@ -127,7 +127,7 @@ bool path_man::validate_path(Eigen::MatrixXd& path)
 
   for (int i=0; i<(path.rows()-1); i++) // collision check for each segment
   {
-    if( !octMan_->u_coll(path.row(i), path.row(i+1)) )
+    if( !in_bounds(path.row(i+1),minBnd,maxBnd) || !octMan_->u_coll(path.row(i), path.row(i+1)) )
       continue;
 
     if(i == 0)
@@ -146,6 +146,19 @@ bool path_man::validate_path(Eigen::MatrixXd& path)
     path.conservativeResize(0, Eigen::NoChange);
 
   return ( pathInSz == path.rows() );
+}
+
+// ***************************************************************************
+bool path_man::in_bounds(const Eigen::Vector3d& ptIn, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd)
+{
+  if( ptIn(0) < minBnd(0) || ptIn(0) > maxBnd(0) )
+    return false;
+  if( ptIn(1) < minBnd(1) || ptIn(1) > maxBnd(1) )
+    return false;
+  if( ptIn(2) < minBnd(2) || ptIn(2) > maxBnd(2) )
+    return false;
+
+  return true;
 }
 
 // ***************************************************************************

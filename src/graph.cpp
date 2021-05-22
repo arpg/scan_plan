@@ -40,12 +40,18 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double 
 }
 
 // ***************************************************************************
-bool graph::add_vertex(const gvert vertIn)
+bool graph::add_vertex(const gvert& vertIn)
+{
+  VertexDescriptor vertInDesc;
+  return add_vertex(vertIn,  vertInDesc);
+}
+
+// ***************************************************************************
+bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc)
 {
   // TODO: Consider using manhattan distance as the edge cost to speed up 
   bool success = false;
   bool vertexPresent = false;
-  VertexDescriptor vertInDesc;
 
   std::pair<VertexIterator, VertexIterator> vertItr = vertices(*adjList_);
 
@@ -101,6 +107,69 @@ Eigen::MatrixXd graph::plan_home(const VertexDescriptor& fromVert)
 bool graph::u_coll(const gvert vert1, const gvert vert2)
 {
   return octMan_->u_coll(vert1.pos, vert2.pos);
+}
+
+// ***************************************************************************
+void graph::update_occupancy(const Eigen::Vector3d& minPt, const Eigen::Vector3d& maxPt, const bool& occupiedOnly)
+{
+// updates occupancy of edges in a local box defined by minPt and maxPt
+// IMPORTANT: Requires a global map but only checks the edges that are going through the local bounds
+// Requires global map because an edge that intersects the bounds is checked all the way
+
+  std::pair<EdgeIterator, EdgeIterator> edgeItr = boost::edges(*adjList_);
+
+  for(EdgeIterator it=edgeItr.first; it!=edgeItr.second; ++it)
+  {
+    if( !in_bounds(*it, minPt, maxPt) )
+      continue;
+ 
+    double edgeWeight = boost::get(boost::edge_weight, *adjList_, *it);
+    if( occupiedOnly && edgeWeight > 0 )
+      continue;
+
+    if( octMan_->u_coll( get_src_pos(*it), get_tgt_pos(*it) ) ) // if edge intersects the input bounds and is in collision
+    { 
+      // set edge weight to negative so the edges filter out when graph is filtered
+      if(edgeWeight > 0)
+        boost::put(boost::edge_weight, *adjList_, *it, -1 * edgeWeight );
+    }
+    else
+    {
+      // set edge weight to positive so the edges don't filter out when graph is filtered
+      if(edgeWeight < 0)
+        boost::put(boost::edge_weight, *adjList_, *it, -1 * edgeWeight );
+    }
+  }
+}
+
+// ***************************************************************************
+bool graph::in_bounds(const EdgeDescriptor& edgeD, const Eigen::Vector3d& minPt, const Eigen::Vector3d& maxPt)
+{
+  // Function derived from http://www.3dkingdoms.com/weekly/weekly.php?a=21
+
+  Eigen::Vector3d mExtent = (maxPt - minPt) * 0.5;
+	Eigen::Vector3d mM = (maxPt + minPt) * 0.5;
+
+	// Put line in box space
+	Eigen::Vector3d LB1 = get_src_pos(edgeD) - mM;
+	Eigen::Vector3d LB2 = get_tgt_pos(edgeD) - mM;
+
+	// Get line midpoint and extent
+	Eigen::Vector3d LMid = (LB1 + LB2) * 0.5; 
+	Eigen::Vector3d L = (LB1 - LMid);
+	Eigen::Vector3d LExt = L.cwiseAbs();
+
+	// Use Separating Axis Test
+	// Separation vector from box center to line center is LMid, since the line is in box space
+	if ( abs( LMid(0) ) > mExtent(0) + LExt(0) ) return false;
+	if ( abs( LMid(1) ) > mExtent(1) + LExt(1) ) return false;
+	if ( abs( LMid(2) ) > mExtent(2) + LExt(2) ) return false;
+	// Crossproducts of line and each axis
+	if ( abs( LMid(1) * L(2) - LMid(2) * L(1))  >  (mExtent(1) * LExt(2) + mExtent(2) * LExt(1)) ) return false;
+	if ( abs( LMid(0) * L(2) - LMid(2) * L(0))  >  (mExtent(0) * LExt(2) + mExtent(2) * LExt(0)) ) return false;
+	if ( abs( LMid(0) * L(1) - LMid(1) * L(0))  >  (mExtent(0) * LExt(1) + mExtent(1) * LExt(0)) ) return false;
+	// No separating axis, the line intersects
+	return true;
 }
 
 // ***************************************************************************
@@ -184,17 +253,24 @@ void graph::publish_viz(ros::Publisher& vizPub)
     vertex1.z = (*adjList_)[vertexDesc].pos(2);
     edges.points.push_back(vertex1);
 
-    color.r = 0; color.g = 1; color.b = 0; color.a = 1;
-    edges.colors.push_back(color);
-
     vertexDesc = boost::target(*it, *adjList_); // target vertex
     vertex2.x = (*adjList_)[vertexDesc].pos(0);
     vertex2.y = (*adjList_)[vertexDesc].pos(1);
     vertex2.z = (*adjList_)[vertexDesc].pos(2);
     edges.points.push_back(vertex2);
 
-    color.r = 0; color.g = 1; color.b = 0; color.a = 1;
-    edges.colors.push_back(color);
+    if( get(boost::edge_weight, *adjList_, *it) < 0 )
+    {
+      color.r = 0; color.g = 1; color.b = 0; color.a = 1;
+      edges.colors.push_back(color);
+      edges.colors.push_back(color);
+    }
+    else
+    {
+      color.r = 1; color.g = 0; color.b = 0; color.a = 1;
+      edges.colors.push_back(color);
+      edges.colors.push_back(color);
+    }
   }
 
   // vertices + edges
@@ -333,10 +409,15 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
 }
 
 // ***************************************************************************
-double graph::closest_frontier_man_dist(const Eigen::Vector3d& ptIn) // closest frontier to the ptIn
+frontier graph::closest_frontier(const Eigen::Vector3d& ptIn, double& dist) // closest frontier to the ptIn
 {
   if(frontiers_.empty())
-    return -1.0;  
+  {
+    frontier front;
+    dist = -1.0;
+    front.volGain = -1.0;
+    return front;
+  }  
 
   frontier closestFront = frontiers_.front(); // pick the first frontier as the best guess
   double minDist = (get_pos(closestFront.vertDesc) - ptIn).lpNorm<1>();
@@ -351,7 +432,16 @@ double graph::closest_frontier_man_dist(const Eigen::Vector3d& ptIn) // closest 
     }
   }
 
-  return minDist;
+  dist = minDist;
+  return closestFront;
+}
+
+// ***************************************************************************
+double graph::closest_frontier_man_dist(const Eigen::Vector3d& ptIn) // closest frontier to the ptIn
+{
+  double dist;
+  closest_frontier(ptIn, dist);
+  return dist;  
 }
 
 // ***************************************************************************
@@ -382,18 +472,33 @@ Eigen::Vector3d graph::get_pos(const VertexDescriptor& vertexD)
 }
 
 // ***************************************************************************
+Eigen::Vector3d graph::get_src_pos(const EdgeDescriptor& edgeD) // source pos
+{
+  return get_pos( boost::source(edgeD, *adjList_) );
+}
+
+// ***************************************************************************
+Eigen::Vector3d graph::get_tgt_pos(const EdgeDescriptor& edgeD) // target pos
+{
+  return get_pos( boost::target(edgeD, *adjList_) );
+}
+
+// ***************************************************************************
 Eigen::MatrixXd graph::plan_shortest_path(const VertexDescriptor& fromVertex, const VertexDescriptor& toVertex)
 {
-  std::vector<VertexDescriptor> pM(boost::num_vertices(*adjList_));
-  std::vector<double> dM(boost::num_vertices(*adjList_));
+  positive_edge_weight<EdgeWeightMap> filter(boost::get(boost::edge_weight, *adjList_));
+  FilteredGraph fGraph(*adjList_, filter);
+
+  std::vector<VertexDescriptor> pM(boost::num_vertices(fGraph));
+  std::vector<double> dM(boost::num_vertices(fGraph));
   try 
   {
     // call astar named parameter interface
-    boost::astar_search ( *adjList_, fromVertex, 
-                          distance_heuristic<BiDirectionalGraph, double> (toVertex, adjList_),
-                          boost::predecessor_map( boost::make_iterator_property_map(pM.begin(), boost::get(boost::vertex_index, *adjList_)) )
-                          .distance_map( boost::make_iterator_property_map(dM.begin(), boost::get(boost::vertex_index, *adjList_)) )
-                          .visitor( goal_visitor<BiDirectionalGraph, VertexDescriptor>(toVertex) ) );
+    boost::astar_search ( fGraph, fromVertex, 
+                          distance_heuristic<FilteredGraph, double> (toVertex, adjList_),
+                          boost::predecessor_map( boost::make_iterator_property_map(pM.begin(), boost::get(boost::vertex_index, fGraph)) )
+                          .distance_map( boost::make_iterator_property_map(dM.begin(), boost::get(boost::vertex_index, fGraph)) )
+                          .visitor( goal_visitor<FilteredGraph, VertexDescriptor>(toVertex) ) );
   
   } 
   catch(found_goal fG) 
@@ -435,7 +540,49 @@ void graph::clear_avoid_frontiers()
 }
 
 // ***************************************************************************
-frontier graph::get_best_frontier(const Eigen::Vector3d& robPos) // returns frontier with <= 0 volGain if none found, avoids avoidFrontiers
+Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries)
+{
+  std::forward_list<frontier> frontiers = ignore_avoid_frontiers();
+  if(frontiers.empty())
+    return Eigen::MatrixXd(0,0);
+
+  double dummyDist;
+  frontier closestFrontier = closest_frontier( get_pos(fromVertex), dummyDist );
+  Eigen::MatrixXd pathToClosestFrontier = plan_shortest_path(fromVertex, closestFrontier.vertDesc);
+  double pathLenToClosestFrontier = path_man::path_len(pathToClosestFrontier);
+
+  Eigen::MatrixXd pathToRecentFrontier;
+
+  int nTries = 0;
+  for(frontier& front: frontiers) // assuming frontiers are arranged from most recent to old, choose the most recent from the existing list
+  {
+    if( nTries >= nTotalTries )
+      break;
+    
+    pathToRecentFrontier = plan_shortest_path(fromVertex, front.vertDesc);
+
+    double pathLenToRecentFrontier = path_man::path_len(pathToRecentFrontier);
+
+    if( pathLenToRecentFrontier > 0 && pathLenToClosestFrontier > 0 )
+    { 
+      if( pathLenToRecentFrontier < pathLenToClosestFrontier )
+        return pathToRecentFrontier;
+      else
+        return pathToClosestFrontier;
+    }
+    else if( pathLenToRecentFrontier > 0 && pathLenToClosestFrontier <= 0 )
+      return pathToRecentFrontier;
+    else if( pathLenToClosestFrontier > 0 && pathLenToRecentFrontier <= 0 )
+      return pathToClosestFrontier;
+   
+    nTries++;
+  }
+
+  return Eigen::MatrixXd(0,0);
+}
+
+// ***************************************************************************
+frontier graph::get_recent_frontier(const Eigen::Vector3d& posIn) // returns frontier with <= 0 volGain if none found, avoids avoidFrontiers
 {
   std::forward_list<frontier> frontiers = ignore_avoid_frontiers();
 
@@ -460,27 +607,6 @@ frontier graph::get_best_frontier(const Eigen::Vector3d& robPos) // returns fron
   frontier front;
   front.volGain = -1.0;
   return front;
-
-/*
-  frontier bestFront = frontiers.front(); // initialize with first frontier
-  double bestCost = frontier_cost_alpha(bestFront, robPos); // initialize min cost with first 
-
-  int n = -1;
-  for(frontier& front: frontiers)
-  {
-    if(n++ < 1)
-      continue;
-    
-    double frontCost = frontier_cost_alpha(front, robPos);
-    if( (frontCost < bestCost))
-    {
-      bestFront = front;
-      bestCost = frontCost;
-    }
-  }
-
-  return bestFront;
-*/
 }
 
 // ***************************************************************************
