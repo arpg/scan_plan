@@ -168,6 +168,7 @@ bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& a
   bool isFirst = true;
   for(int i=0; i<surfCoordsBase_.rows(); i++)
   {
+   // std::cout << "Robot Pose: " << pose.transpose() << ", Surface Point: " << surfCoordsBase_.row(i) << ", " << ( rotz(surfCoordsBase_.row(i), yaw) + pos ).transpose() << std::endl;
     int castDownStatus = cast_ray_down( rotz(surfCoordsBase_.row(i), yaw) + pos, currGroundPt );
 
     if( castDownStatus == 0 ) // under-collision
@@ -200,7 +201,7 @@ bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& a
 
   if( double(successfulProjections) / double(surfCoordsBase_.rows()) < successfulProjectionsPercent )
   {
-    std::cout << "Not enough projections " << double(successfulProjections) << "," << double(surfCoordsBase_.rows()) << std::endl;
+    //std::cout << "Not enough projections " << double(successfulProjections) << "," << double(surfCoordsBase_.rows()) << std::endl;
     return false;
   }
   else

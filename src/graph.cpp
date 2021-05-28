@@ -58,6 +58,10 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc)
   for(VertexIterator it=vertItr.first; it!=vertItr.second; ++it)
   {
     double dist = (vertIn.pos - (*adjList_)[*it].pos).squaredNorm();
+
+    if( dist == 0.0 ) // dont add connection to the same node, return immidiately if found
+      return success;
+
     if( dist > pow(radNear_,2) )
       continue;
     //std::cout << "Adding vertex " << vertIn.pos.transpose() << " to " << (*adjList_)[*it].pos.transpose() << std::endl;
@@ -67,7 +71,15 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc)
     {
       //std::cout << "Help0" << std::endl;
       vertInDesc = boost::add_vertex(vertIn, *adjList_);
-      boost::add_edge( vertInDesc, *it, sqrt(dist), *adjList_ ); //vertIn is added if not already present
+      std::pair<EdgeDescriptor, bool> edgeDescPair = boost::add_edge( vertInDesc, *it, sqrt(dist), *adjList_ ); //vertIn is added if not already present
+
+      //if( get(boost::edge_weight, *adjList_, edgeDescPair.first) == 0.0 )
+     // {
+     //   ROS_ERROR("Zero Edge Weight, 1");
+     //   std::cout << "vertInPos: " << vertIn.pos.transpose() << std::endl;
+     //   std::cout << "vertGraphPos: " << (*adjList_)[*it].pos.transpose() << std::endl;
+     // }
+
       success = true;
       vertexPresent = true;
       //std::cout << "Help1" << std::endl;
@@ -120,13 +132,14 @@ void graph::update_occupancy(const Eigen::Vector3d& minPt, const Eigen::Vector3d
 
   for(EdgeIterator it=edgeItr.first; it!=edgeItr.second; ++it)
   {
-    if( !in_bounds(*it, minPt, maxPt) )
-      continue;
+    //if( !in_bounds(*it, minPt, maxPt) )
+     // continue;
  
     double edgeWeight = boost::get(boost::edge_weight, *adjList_, *it);
     if( occupiedOnly && edgeWeight > 0 )
       continue;
 
+    //std::cout << "Checking for collision to check occupancy" << std::endl;
     if( octMan_->u_coll( get_src_pos(*it), get_tgt_pos(*it) ) ) // if edge intersects the input bounds and is in collision
     { 
       // set edge weight to negative so the edges filter out when graph is filtered
@@ -157,7 +170,7 @@ bool graph::in_bounds(const EdgeDescriptor& edgeD, const Eigen::Vector3d& minPt,
 	// Get line midpoint and extent
 	Eigen::Vector3d LMid = (LB1 + LB2) * 0.5; 
 	Eigen::Vector3d L = (LB1 - LMid);
-	Eigen::Vector3d LExt = L.cwiseAbs();
+	Eigen::Vector3d LExt( abs(L(0)), abs(L(1)), abs(L(2)) );
 
 	// Use Separating Axis Test
 	// Separation vector from box center to line center is LMid, since the line is in box space
@@ -228,18 +241,21 @@ void graph::publish_viz(ros::Publisher& vizPub)
   }
 
   // edges
-  visualization_msgs::Marker edges;
-  edges.header.frame_id = frameId_;
-  edges.header.stamp = ros::Time::now();
-  edges.ns = "edges";
-  edges.id = 0;
-  edges.type = visualization_msgs::Marker::LINE_LIST;
-  edges.action = visualization_msgs::Marker::ADD;
-  edges.pose.orientation.w = 1; 
+  visualization_msgs::Marker free_edges;
+  free_edges.header.frame_id = frameId_;
+  free_edges.header.stamp = ros::Time::now();
+  free_edges.ns = "free_edges";
+  free_edges.id = 0;
+  free_edges.type = visualization_msgs::Marker::LINE_LIST;
+  free_edges.action = visualization_msgs::Marker::ADD;
+  free_edges.pose.orientation.w = 1; 
   scale.x = 0.025;
 	scale.y = 0.025;
 	scale.z = 0.025;
-	edges.scale = scale;
+	free_edges.scale = scale;
+
+  visualization_msgs::Marker occupied_edges = free_edges;
+  occupied_edges.ns = "occupied_edges";
   
   geometry_msgs::Point vertex1;
   geometry_msgs::Point vertex2;
@@ -251,32 +267,40 @@ void graph::publish_viz(ros::Publisher& vizPub)
     vertex1.x = (*adjList_)[vertexDesc].pos(0);
     vertex1.y = (*adjList_)[vertexDesc].pos(1);
     vertex1.z = (*adjList_)[vertexDesc].pos(2);
-    edges.points.push_back(vertex1);
-
+    
     vertexDesc = boost::target(*it, *adjList_); // target vertex
     vertex2.x = (*adjList_)[vertexDesc].pos(0);
     vertex2.y = (*adjList_)[vertexDesc].pos(1);
     vertex2.z = (*adjList_)[vertexDesc].pos(2);
-    edges.points.push_back(vertex2);
+  
+   if( get(boost::edge_weight, *adjList_, *it) == 0 )
+     ROS_ERROR("Zero Edge Weight");
 
     if( get(boost::edge_weight, *adjList_, *it) < 0 )
     {
-      color.r = 0; color.g = 1; color.b = 0; color.a = 1;
-      edges.colors.push_back(color);
-      edges.colors.push_back(color);
+      occupied_edges.points.push_back(vertex1);
+      occupied_edges.points.push_back(vertex2);
+      
+      color.r = 1; color.g = 0; color.b = 0; color.a = 1;
+      occupied_edges.colors.push_back(color);
+      occupied_edges.colors.push_back(color);
     }
     else
     {
-      color.r = 1; color.g = 0; color.b = 0; color.a = 1;
-      edges.colors.push_back(color);
-      edges.colors.push_back(color);
+      free_edges.points.push_back(vertex1);
+      free_edges.points.push_back(vertex2);
+      
+      color.r = 0; color.g = 1; color.b = 0; color.a = 1;
+      free_edges.colors.push_back(color);
+      free_edges.colors.push_back(color);
     }
   }
 
   // vertices + edges
   visualization_msgs::MarkerArray vizMsg;
   vizMsg.markers.push_back(vertices);
-  vizMsg.markers.push_back(edges);
+  vizMsg.markers.push_back(free_edges);
+  vizMsg.markers.push_back(occupied_edges);
 
   // frontiers
   visualization_msgs::Marker frontViz;
@@ -402,7 +426,7 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
     vert.terrain = gvert::UNKNOWN;
 
     //std::cout << "Adding vertex" << std::endl;
-    success = add_vertex(vert);
+    success |= add_vertex(vert);
   }
 
   return success;

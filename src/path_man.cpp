@@ -117,6 +117,9 @@ bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBn
 {
   // returns false if path length changes, and the modified path
 
+  // IMPORTANT: Requires a global map but only checks the edges which has source vertex inside the local bounds
+  // Requires global map because an edge is checked all the way
+
   if(path.rows() < 2) // path with one point is invalid, nothing to check
   {
     path.conservativeResize(0, Eigen::NoChange);
@@ -127,7 +130,9 @@ bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBn
 
   for (int i=0; i<(path.rows()-1); i++) // collision check for each segment
   {
-    if( !in_bounds(path.row(i+1),minBnd,maxBnd) || !octMan_->u_coll(path.row(i), path.row(i+1)) )
+    std::cout << "Entering" << std::endl;
+    // assuming path is being followed, the vehicle should come in local proximity to all vertices, so it's sufficient to check the sourse vertices for in_bounds
+    if( !in_bounds(path.row(i),minBnd,maxBnd) || !octMan_->u_coll(path.row(i), path.row(i+1)) ) 
       continue;
 
     if(i == 0)
@@ -151,6 +156,7 @@ bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBn
 // ***************************************************************************
 bool path_man::in_bounds(const Eigen::Vector3d& ptIn, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd)
 {
+  std::cout << "Exiting" << std::endl;
   if( ptIn(0) < minBnd(0) || ptIn(0) > maxBnd(0) )
     return false;
   if( ptIn(1) < minBnd(1) || ptIn(1) > maxBnd(1) )

@@ -439,6 +439,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   //TODO: Add goal point to graph while planning to a goal point because the mode switches to local so if the goal point is far from graph, connectivity might be a prob
   //TODO: Add vehicle not moving and map change detections logic
 
+  Eigen::MatrixXd minCstPathPrev = minCstPath_;
+
   if(status_.mode == plan_status::MODE::UNSTUCK && end_of_path() )
   {
     graph_->add_path(minCstPath_, true);  // add unstuck path to graph after robot starts moving to avoid dense graph around the stationary robot   
@@ -519,11 +521,19 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
         minCstPath_ = minCstPath;
     }
   }
-
-  if( !pathMan_->validate_path(minCstPath_, localBndsMin_, localBndsMax_) )
-    graph_-> update_occupancy(localBndsMin_, localBndsMax_, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
-  else
-    graph_-> update_occupancy(localBndsMin_, localBndsMax_, true); // if path is obstacle-free update occupany of only occupied edges
+  pathMan_->validate_path(minCstPath_, localBndsMin_, localBndsMax_);
+  graph_-> update_occupancy(100*localBndsMin_, 100*localBndsMax_, false);
+  // if the path is updated, no need to validate in this iteration, otherwise validate
+  //if( minCstPathPrev == minCstPath_ && !pathMan_->validate_path(minCstPath_, localBndsMin_, localBndsMax_) )
+  //{
+    //std::cout << "Updating occupancy" << std::endl;
+    //graph_-> update_occupancy(localBndsMin_, localBndsMax_, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
+  //}
+  //else if( minCstPathPrev == minCstPath_ )
+  //{
+    //std::cout << "Updating occupancy" << std::endl;
+    //graph_-> update_occupancy(localBndsMin_, localBndsMax_, true); // if path is obstacle-free update occupany of only occupied edges
+  //}
 
   //TODO: Generate graph diconnect warning if no path is successfully added to the graph
   // Only add node to the graph if there is no existing node closer than radRob in graph lib, return success in that case since the graph is likely to be connected fine
@@ -536,6 +546,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
    
   ros::Duration timeE = ros::Time::now() - timeS;
 
+  std::cout << "Publishing rrt viz" << std::endl;
   rrtTree_->publish_viz(vizPub_,worldFrameId_);
 
   std::cout << "Publishing plan mode" << std::endl;
@@ -547,7 +558,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   std::cout << "Publishing frontiers" << std::endl; 
   graph_->publish_frontiers(frontiersPub_); 
 
-  std::cout << "Publishing visualizations" << std::endl;
+  std::cout << "Publishing  graph viz" << std::endl;
   graph_->publish_viz(vizPub_);
 
   std_msgs::Float64 computeTimeMsg;

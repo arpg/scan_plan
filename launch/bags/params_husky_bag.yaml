@@ -6,7 +6,7 @@ sensor_res_horz_vert_pts: [360, 45]
 sensor_ranges: [5]
 sensor_frame_ids: [H01/horiz_ouster_sensor]
 
-min_bounds_local: [-10, -10, 0.0] # used for local path planning, should include base_link
+min_bounds_local: [-10, -10, -2.0] # used for local path planning, should include base_link
 max_bounds_local: [10, 10, 0.5]
 n_rrt_nodes: 300
 near_radius_rrt: 2.0
@@ -35,7 +35,8 @@ time_interval_replan: 0.2
 esdf_max_dist: 5.0 # greater than robot radius
 esdf_unknown_as_occupied: true
 vehicle_type: ground
-robot_radius: 0.5
+robot_width: 1.0
+robot_length: 1.0
 max_ground_roughness: 60 # angle from positive z (radians)
 max_ground_step: 0.35 # greater than octomap resolution
 ground_plane_search_distance: 3.0
@@ -48,8 +49,9 @@ max_bnds_geofence: [100000, 100000, 100000]
 n_hist_pts_for_exploration_dir: 10
 vol_gain_monitor_dur_mode_switch: 5
 succ_rad_end_of_path: 1.5
-min_vol_gain_local_plan: 30.0
+min_vol_gain_local_plan: 15.0
 no_of_tries_local_plan: 2
+no_of_tries_global_plan: 20
 
 
 verbose: true

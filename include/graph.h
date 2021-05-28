@@ -45,7 +45,7 @@ struct gvert
 };
 
 // *************************************************************************** // TODO: Checkout other graph types, mutable, undirected? Any faster?
-typedef boost::property<boost::edge_weight_t, int> EdgeWeightProperty;
+typedef boost::property<boost::edge_weight_t, double> EdgeWeightProperty;
 typedef boost::adjacency_list<boost::listS, boost::vecS, boost::undirectedS, gvert, EdgeWeightProperty > BiDirectionalGraph;
 typedef boost::property_map<BiDirectionalGraph, boost::edge_weight_t>::type EdgeWeightMap;
 typedef boost::filtered_graph<BiDirectionalGraph, positive_edge_weight<EdgeWeightMap> > FilteredGraph;
