@@ -72,8 +72,10 @@ private:
   double maxBnds_[3];
 
   double radNear_;
-  double radNearest_;
+  double minDistNodes_;
   double minVolGain_;
+ 
+  int maxEdgesPerVertex_;
   
   octomap_man* octMan_;
 
@@ -91,6 +93,10 @@ private:
 
   std::vector<Eigen::Vector3d> avoidFrontiers_; // only valid for get_best_frontier function for now
   double manDistAvoidFrontier_;
+
+  std::vector<VertexDescriptor> vertsOutDesc_; // preventing memory allocation in add_vertex functions
+  std::vector<double> vertsOutDist_; // preventing memory allocation in add_vertex functions
+
  
   // if a node in the graph is removed, the iterators may change, frontier nodes cannot be tracked using VertexIterator in that case
   // Preference 1. Don't remove anything from the graph
@@ -99,7 +105,7 @@ private:
  
 public:
   ~graph();
-  graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>&, const double& );
+  graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int maxEdgesPerVertex, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>&, const double& );
   
   bool add_vertex(const gvert&);
   bool add_vertex(const gvert&, VertexDescriptor&);

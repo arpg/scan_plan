@@ -2,7 +2,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax, const std::vector<double>& cGain, const double& manDistAvoidFrontier)
+graph::graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int maxEdgesPerVertex, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax, const std::vector<double>& cGain, const double& manDistAvoidFrontier)
 {
   adjList_ = new BiDirectionalGraph;
 
@@ -16,7 +16,8 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double radNearest, double 
   homeVert_ = boost::add_vertex(vertRoot, *adjList_);
   isHomeVertConnected_ = false;
 
-  radNearest_ = radNearest;
+  minDistNodes_ = minDistNodes;
+  maxEdgesPerVertex_ = maxEdgesPerVertex;
   radNear_ = radNear;
   frameId_ = frameId;
   minVolGain_ = minVolGain;
@@ -55,40 +56,38 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc)
 
   std::pair<VertexIterator, VertexIterator> vertItr = vertices(*adjList_);
 
+  vertsOutDesc_.resize(0); // descriptors of target vertices such that the connection is collision-free
+  vertsOutDist_.resize(0); // distances of target vertices from the vertIn
+
+  double nEdges = 0;
   for(VertexIterator it=vertItr.first; it!=vertItr.second; ++it)
   {
+    if( maxEdgesPerVertex_ < ++nEdges ) // only add nEdgesPerVertex_ edges
+      break;
+
     double dist = (vertIn.pos - (*adjList_)[*it].pos).squaredNorm();
 
-    if( dist == 0.0 ) // dont add connection to the same node, return immidiately if found
-      return success;
+    if( dist < minDistNodes_ )
+      return true; // a node already exists at the same position
 
     if( dist > pow(radNear_,2) )
       continue;
-    //std::cout << "Adding vertex " << vertIn.pos.transpose() << " to " << (*adjList_)[*it].pos.transpose() << std::endl;
-    //std::cout << "Collision check: " << u_coll(vertIn, (*adjList_)[*it]) << std::endl;
-    //std::cout << "Source vertex already added: " << vertexPresent << std::endl;
-    if( !u_coll(vertIn, (*adjList_)[*it]) && !vertexPresent )
+    
+    if( !u_coll(vertIn, (*adjList_)[*it]) )
     {
-      //std::cout << "Help0" << std::endl;
-      vertInDesc = boost::add_vertex(vertIn, *adjList_);
-      std::pair<EdgeDescriptor, bool> edgeDescPair = boost::add_edge( vertInDesc, *it, sqrt(dist), *adjList_ ); //vertIn is added if not already present
-
-      //if( get(boost::edge_weight, *adjList_, edgeDescPair.first) == 0.0 )
-     // {
-     //   ROS_ERROR("Zero Edge Weight, 1");
-     //   std::cout << "vertInPos: " << vertIn.pos.transpose() << std::endl;
-     //   std::cout << "vertGraphPos: " << (*adjList_)[*it].pos.transpose() << std::endl;
-     // }
-
-      success = true;
-      vertexPresent = true;
-      //std::cout << "Help1" << std::endl;
+      vertsOutDesc_.push_back( *it );
+      vertsOutDist_.push_back( sqrt(dist) );
     }
-    else if( !u_coll(vertIn, (*adjList_)[*it]) && vertexPresent )
-      boost::add_edge( vertInDesc, *it, sqrt(dist), *adjList_ );
-
-    //std::cout << "Help2" << std::endl;
   }
+
+  if( vertsOutDesc_.size() > 0 )
+  {
+    vertInDesc = boost::add_vertex(vertIn, *adjList_);
+    success = true;
+  }
+
+  for(int i=0; i<vertsOutDesc_.size(); i++) 
+    boost::add_edge( vertInDesc, vertsOutDesc_[i], vertsOutDist_[i], *adjList_ );
 
   if(vertIn.isFrontier && success)
   {
@@ -100,7 +99,8 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc)
 
   if(!isHomeVertConnected_ && boost::in_degree(homeVert_, *adjList_) < 1 ) // if home was not connected and is still not connected (assuming the node is not added above unless connected to home node)
   {
-    vertInDesc = boost::add_vertex(vertIn, *adjList_);
+    if( !success )
+      vertInDesc = boost::add_vertex(vertIn, *adjList_);
     homeVert_ = vertInDesc;
   }
   else if(!isHomeVertConnected_ && boost::in_degree(homeVert_, *adjList_) >= 1) // if home was not connected and is now connected
@@ -314,7 +314,7 @@ void graph::publish_viz(ros::Publisher& vizPub)
 	scale.z = 0.5;
 	frontViz.scale = scale;
 
-  int idFrontViz = -1;
+  int idFrontViz = 0;
   for(frontier& front: frontiers_)
   {
     frontViz.pose.position.x = (*adjList_)[front.vertDesc].pos(0);

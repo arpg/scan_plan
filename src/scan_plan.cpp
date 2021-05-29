@@ -116,11 +116,13 @@ void scan_plan::setup_graph()
   // prereqs setup_pose, setup_octomap
 
   ROS_INFO("%s: Waiting for graph params ...", nh_->getNamespace().c_str());
-  double graphRadNear, minVolGain, graphRadNearest, minManDistFrontier, manRadAvoidFrontier;
+  double graphRadNear, minVolGain, minDistNodes, minManDistFrontier, manRadAvoidFrontier;
+  int maxEdgesPerVertex;
   std::vector<double> homePos, entranceMin, entranceMax, cGain;
  
   while(!nh_->getParam("near_radius_graph", graphRadNear));
-  while(!nh_->getParam("nearest_radius_graph", graphRadNearest));
+  while(!nh_->getParam("min_distance_between_nodes", minDistNodes));
+  while(!nh_->getParam("max_edges_per_vertex", maxEdgesPerVertex));
   while(!nh_->getParam("min_vol_gain_frontier", minVolGain)); // used for local/global switching and removing frontiers, (m^3)
   while(!nh_->getParam("home_position", homePos)); // must be collision-free
   while(!nh_->getParam("min_man_dist_frontiers", minManDistFrontier));
@@ -134,7 +136,7 @@ void scan_plan::setup_graph()
   homePos_(1) = homePos[1];
   homePos_(2) = homePos[2];
 
-  graph_ = new graph(homePos_, graphRadNear, graphRadNearest, minVolGain, worldFrameId_, octMan_, minManDistFrontier, entranceMin, entranceMax, cGain, manRadAvoidFrontier);
+  graph_ = new graph(homePos_, graphRadNear, minDistNodes, maxEdgesPerVertex, minVolGain, worldFrameId_, octMan_, minManDistFrontier, entranceMin, entranceMax, cGain, manRadAvoidFrontier);
 }
 
 // ***************************************************************************
