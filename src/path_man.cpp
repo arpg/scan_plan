@@ -97,8 +97,8 @@ std::pair<double, double> path_man::mean_heading_height_err(double yawIn, double
 // ***************************************************************************
 double path_man::path_to_path_dist(const Eigen::MatrixXd& path1, const Eigen::MatrixXd& path2)
 {
-  // path1 : candidate path
-  // path2 : pose history path
+  // path1 : pose history path (interpolated path) 
+  // path2 : candidate path
   double dist = 0;
   for(int i=0; i<path1.rows(); i++)
     dist += point_to_path_dist( Eigen::Vector3d(path1(i,0), path1(i,1), path1(i,2) ), path2 );
@@ -109,7 +109,28 @@ double path_man::path_to_path_dist(const Eigen::MatrixXd& path1, const Eigen::Ma
 // ***************************************************************************
 double path_man::point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::MatrixXd& pathIn)
 {
-  return ( pathIn.rowwise() - ptIn.transpose() ).rowwise().lpNorm<1>().minCoeff(); // minimum 1-norm distance to a path
+  // return ( pathIn.rowwise() - ptIn.transpose() ).rowwise().lpNorm<1>().minCoeff(); // minimum 1-norm distance to a path
+
+  if( pathIn.rows() < 1 )
+    return 0.0;
+
+  if( pathIn.rows() == 1 )
+    return (pathIn.row(0).transpose() - ptIn).norm();
+
+  double minDist = ( ( ptIn - pathIn.row(0).transpose() ).cross( ptIn - pathIn.row(1).transpose() ) ).norm() / ( pathIn.row(1) - pathIn.row(0) ).norm(); // initialize with distance to first line seg
+
+  if( pathIn.rows() == 2 )
+    return minDist;
+
+  for( int i=1; i<(pathIn.rows()-1); i++ )
+  {
+    double dist = ( ( ptIn - pathIn.row(i).transpose() ).cross( ptIn - pathIn.row(i+1).transpose() ) ).norm() / ( pathIn.row(i+1) - pathIn.row(i) ).norm();
+
+    if( dist < minDist )
+      minDist = dist;
+  }
+
+  return minDist;
 }
 
 // ***************************************************************************

@@ -145,6 +145,8 @@ void scan_plan::setup_timers()
   ROS_INFO("%s: Waiting for timer params ...", nh_->getNamespace().c_str());
 
   while(!nh_->getParam("time_interval_replan", timeIntReplan_));
+  while(!nh_->getParam("min_path_dist_time_based_replan", minPathDistTimerBasedReplan_));
+  while(!nh_->getParam("time_interval_timer_based_replan", timeIntTimerBasedReplan_));
 
   ROS_INFO("%s: Creating timers ...", nh_->getNamespace().c_str());
   timerReplan_ = nh_->createTimer(ros::Duration(timeIntReplan_), &scan_plan::timer_replan_cb, this);
@@ -400,7 +402,7 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   if( (isInitialized_ & 0x01) != 0x01 )
   {
     status_.changeDetected_ = false;
-    update_explored_volume(octTree->getNumLeafNodes() * pow(octmpMsg.resolution,3));
+    //update_explored_volume(octTree->getNumLeafNodes() * pow(octmpMsg.resolution,3));
     isInitialized_ = isInitialized_ | 0x01;
   }
 }
@@ -408,7 +410,7 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 // ***************************************************************************
 bool scan_plan::end_of_path()
 {
-  if( status_.inducedEndOfPath )
+  if( status_.inducedEndOfPath ) // if end-of-path is induced
   {
     status_.inducedEndOfPath = false;
     return true;
@@ -422,6 +424,8 @@ bool scan_plan::end_of_path()
     return true;
   if( (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) // if the robot is near the end point of the path
     return true;
+  if( path_man::point_to_path_dist(robPos, minCstPath_) > minPathDistTimerBasedReplan_ && (ros::Time::now() - status_.lastReplanTime).toSec() > timeIntTimerBasedReplan_ )
+    return true; // if robot is away from planned path and time interval has elapsed
 
   return false;
 }
@@ -523,19 +527,23 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
         minCstPath_ = minCstPath;
     }
   }
-  pathMan_->validate_path(minCstPath_, localBndsMin_, localBndsMax_);
-  graph_-> update_occupancy(100*localBndsMin_, 100*localBndsMax_, false);
+
   // if the path is updated, no need to validate in this iteration, otherwise validate
-  //if( minCstPathPrev == minCstPath_ && !pathMan_->validate_path(minCstPath_, localBndsMin_, localBndsMax_) )
-  //{
-    //std::cout << "Updating occupancy" << std::endl;
-    //graph_-> update_occupancy(localBndsMin_, localBndsMax_, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
-  //}
-  //else if( minCstPathPrev == minCstPath_ )
-  //{
-    //std::cout << "Updating occupancy" << std::endl;
-    //graph_-> update_occupancy(localBndsMin_, localBndsMax_, true); // if path is obstacle-free update occupany of only occupied edges
-  //}
+  if( minCstPathPrev.size() == minCstPath_.size() && minCstPathPrev.topRows(1) == minCstPath_.topRows(1) && minCstPathPrev.bottomRows(1) == minCstPath_.bottomRows(1) )
+  {
+    if( !pathMan_->validate_path(minCstPath_, localBndsMin_, localBndsMax_) )
+    {
+      std::cout << "Updating graph occupancy (all)" << std::endl;
+      graph_-> update_occupancy(localBndsMin_, localBndsMax_, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
+    }
+    else
+    {
+      std::cout << "Updating graph occupancy (occupied only)" << std::endl;
+      graph_-> update_occupancy(localBndsMin_, localBndsMax_, true); // if path is obstacle-free update occupany of only occupied edges
+    }
+  }
+  else // if path is updated (replan happened in this iteration)
+    status_.lastReplanTime = ros::Time::now();
 
   //TODO: Generate graph diconnect warning if no path is successfully added to the graph
   // Only add node to the graph if there is no existing node closer than radRob in graph lib, return success in that case since the graph is likely to be connected fine
@@ -914,7 +922,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
 double scan_plan::path_cost_alpha(const Eigen::MatrixXd& path, const double& currExpYaw, const double& currExpHeight)
 {
   std::pair<double, double> pathYawHeightErr = path_man::mean_heading_height_err(currExpYaw, currExpHeight, path);
-  return cGain_[0] * ( -1 * path_man::path_to_path_dist(path,posHist_.topRows(posHistSize_)) ) // distance between candidate path and pose history path
+  return cGain_[0] * ( -1 * path_man::path_to_path_dist( posHist_.topRows(posHistSize_),path ) ) // distance between candidate path and pose history path
          + cGain_[1] * std::get<0>(pathYawHeightErr) // distance between the pose history and candidate path headings
          + cGain_[2] * std::get<1>(pathYawHeightErr); // distance between the pose history and candidate path heights
 }
@@ -1071,8 +1079,8 @@ void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
 // ***************************************************************************
 void scan_plan::update_explored_volume(const double& expVol)
 {
-  status_.volExp = expVol;
-  status_.volExpStamp = ros::Time::now();
+  //status_.volExp = expVol;
+  //status_.volExpStamp = ros::Time::now();
 }
 // ***************************************************************************
 void scan_plan::publish_plan_mode()

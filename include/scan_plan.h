@@ -26,7 +26,7 @@ struct plan_status
   VertexDescriptor goalVtx; // if planning to a goal vertex
 
   double volExp = 0; // cubic meters per volGainMonitorDur secs (since lastVolGainCheck)
-  ros::Time volExpStamp = ros::Time::now();
+  ros::Time lastReplanTime = ros::Time::now();
 
   bool changeDetected_ = false;
   bool inducedEndOfPath = false;
@@ -98,6 +98,9 @@ private:
   double minVolGainLocalPlan_;
   int nTriesLocalPlan_;
   int nTriesGlobalPlan_;
+
+  double minPathDistTimerBasedReplan_;
+  double timeIntTimerBasedReplan_;
 
   double endOfPathSuccRad_;
 

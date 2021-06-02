@@ -277,6 +277,9 @@ void octomap_man::update_esdf(const Eigen::Vector3d& minBnds, const Eigen::Vecto
   //double rrtBnds[2][3];
   //get_rrt_bounds(rrtBnds);
 
+  if( vehicleType_ == "ground" ) // esdf not required for ground vehicles
+    return;
+
   octomap::point3d min(minBnds(0), minBnds(1), minBnds(2));
   octomap::point3d max(maxBnds(0), maxBnds(1), maxBnds(2));
 

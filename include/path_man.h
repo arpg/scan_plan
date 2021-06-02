@@ -7,6 +7,7 @@
 #include "octomap_man.h"
 
 #include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/Geometry>
 #include <math.h>
 
 // ***************************************************************************

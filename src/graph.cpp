@@ -68,7 +68,7 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc)
     double dist = (vertIn.pos - (*adjList_)[*it].pos).squaredNorm();
 
     if( dist < minDistNodes_ )
-      return true; // a node already exists at the same position
+      return false; // a node already exists at the same position
 
     if( dist > pow(radNear_,2) )
       continue;
