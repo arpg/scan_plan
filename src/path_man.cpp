@@ -187,6 +187,23 @@ bool path_man::in_bounds(const Eigen::Vector3d& ptIn, const Eigen::Vector3d& min
 }
 
 // ***************************************************************************
+bool path_man::are_equal(const Eigen::MatrixXd& path1, const Eigen::MatrixXd& path2) // checks if to paths are the same
+{
+  // checks if start, end points and sizes are the same
+  // could be the zero mean squared distance check but this is computationally better if used to check if a path is replaned in the end-of-task scan_plan function
+
+  if( path1.rows() != path2.rows() )
+    return false;
+
+  if( path1.rows() == 0 && path2.rows() == 0 )
+    return true;
+
+  if( ( path1.topRows(1) - path2.topRows(1) ).lpNorm<1>() < 1e-6 && 
+      ( path1.bottomRows(1) - path2.bottomRows(1) ).lpNorm<1>() < 1e-6 )
+    return false;
+}
+
+// ***************************************************************************
 bool path_man::path_len_check(const Eigen::MatrixXd& path)
 {
   //double pathLength = path_man::path_len(path);

@@ -32,6 +32,8 @@ entrance_max_bnds: [20, 39, 25]
 frontier_cost_gains: [4.0, 1.0] # distance from robot, vol gain (this gain may change with sensor resolution)
 
 time_interval_replan: 0.2
+min_path_dist_time_based_replan: 1.0
+time_interval_timer_based_replan: 1.0
 
 esdf_max_dist: 5.0 # greater than robot radius
 esdf_unknown_as_occupied: true

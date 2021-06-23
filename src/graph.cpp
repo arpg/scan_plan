@@ -59,10 +59,9 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc)
   vertsOutDesc_.resize(0); // descriptors of target vertices such that the connection is collision-free
   vertsOutDist_.resize(0); // distances of target vertices from the vertIn
 
-  double nEdges = 0;
   for(VertexIterator it=vertItr.first; it!=vertItr.second; ++it)
   {
-    if( maxEdgesPerVertex_ < ++nEdges ) // only add nEdgesPerVertex_ edges
+    if( maxEdgesPerVertex_ < (vertsOutDesc_.size()+1) ) // only add nEdgesPerVertex_ edges
       break;
 
     double dist = (vertIn.pos - (*adjList_)[*it].pos).squaredNorm();

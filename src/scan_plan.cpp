@@ -528,8 +528,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
     }
   }
 
-  // if the path is updated, no need to validate in this iteration, otherwise validate
-  if( minCstPathPrev.size() == minCstPath_.size() && minCstPathPrev.topRows(1) == minCstPath_.topRows(1) && minCstPathPrev.bottomRows(1) == minCstPath_.bottomRows(1) )
+  if( !path_man::are_equal(minCstPathPrev, minCstPath_) ) // if the path is updated, no need to validate in this iteration, otherwise validate
   {
     if( !pathMan_->validate_path(minCstPath_, localBndsMin_, localBndsMax_) )
     {

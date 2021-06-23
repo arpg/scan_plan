@@ -31,6 +31,7 @@ public:
   static double path_to_path_dist(const Eigen::MatrixXd& path1, const Eigen::MatrixXd& path2);
   static double point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::MatrixXd& pathIn);
   bool in_bounds(const Eigen::Vector3d&, const Eigen::Vector3d&, const Eigen::Vector3d&);
+  static bool are_equal(const Eigen::MatrixXd&, const Eigen::MatrixXd&);
 
   Eigen::MatrixXd interpolate(const Eigen::MatrixXd& path, const double& maxSpacePts);
   bool is_staircase(const Eigen::MatrixXd& path, const double& minStepHeight, const int& minNSteps);
