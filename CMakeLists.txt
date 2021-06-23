@@ -17,7 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   octomap_msgs
   tf2_ros
-  message_generation
+  scan_plan_msgs
 )
 
 find_package(Eigen3 REQUIRED)
@@ -60,11 +60,11 @@ find_package(PythonLibs REQUIRED)
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
- add_message_files(
-   FILES
-   PoseArray.msg
-   PoseArrays.msg
-  )
+# add_message_files(
+#   FILES
+#   PoseArray.msg
+#   PoseArrays.msg
+#  )
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -81,10 +81,10 @@ find_package(PythonLibs REQUIRED)
 # )
 
 ## Generate added messages and services with any dependencies listed here
- generate_messages(
-   DEPENDENCIES
-   geometry_msgs
- )
+# generate_messages(
+#   DEPENDENCIES
+#   geometry_msgs
+# )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -118,7 +118,7 @@ find_package(PythonLibs REQUIRED)
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES scan_plan rrt graph mapping_sensor octomap_man path_man
-  CATKIN_DEPENDS message_runtime
+#  CATKIN_DEPENDS message_runtime
 #  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy sensor_msgs std_msgs
 #  DEPENDS system_lib
 )

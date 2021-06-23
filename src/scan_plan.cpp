@@ -24,7 +24,7 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   poseHistSub_ = nh->subscribe("pose_hist_in", 1, &scan_plan::pose_hist_cb, this);
   goalSub_ = nh->subscribe("goal_in", 1, &scan_plan::goal_cb, this);
   taskSub_ = nh->subscribe("task_in", 1, &scan_plan::task_cb, this);
-  poseHistNeighborsSub_ = nh->subscribe("pose_hist_neighbors_in", 1, &scan_plan::pose_hist_neighbors_cb, this);
+  posHistNeighborsSub_ = nh->subscribe("pos_hist_neighbors_in", 1, &scan_plan::pos_hist_neighbors_cb, this);
 
   canPlanPub_ = nh->advertise<std_msgs::Bool>("can_plan_out", 10);
   planModePub_ = nh->advertise<std_msgs::String>("mode_out", 10);
@@ -1119,9 +1119,17 @@ void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
 }
 
 // ***************************************************************************
-void scan_plan::pose_hist_neighbors_cb(const scan_plan::PoseArrays& poseArrays)
+void scan_plan::pos_hist_neighbors_cb(const scan_plan_msgs::PointArrays& pointArrays)
 {
-  
+  if( pointArrays.arrays.size() != posHistNeighbors_.size() )
+    posHistNeighbors_.resize( pointArrays.arrays.size() );
+
+  for( int i=0; i<posHistNeighbors_.size(); i++ )
+  {
+    posHistNeighbors_[i].conservativeResize( pointArrays.arrays[i].points.size(), 3 );
+    for( int j=0; j<posHistNeighbors_[i].rows(); j++ )
+      posHistNeighbors_[i].row(j) = Eigen::Vector3d( pointArrays.arrays[i].points[j].x, pointArrays.arrays[i].points[j].y, pointArrays.arrays[i].points[j].z );
+  }
 }
 
 // ***************************************************************************
