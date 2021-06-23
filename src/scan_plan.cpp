@@ -24,6 +24,7 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   poseHistSub_ = nh->subscribe("pose_hist_in", 1, &scan_plan::pose_hist_cb, this);
   goalSub_ = nh->subscribe("goal_in", 1, &scan_plan::goal_cb, this);
   taskSub_ = nh->subscribe("task_in", 1, &scan_plan::task_cb, this);
+  poseHistNeighborsSub_ = nh->subscribe("pose_hist_neighbors_in", 1, &scan_plan::pose_hist_neighbors_cb, this);
 
   canPlanPub_ = nh->advertise<std_msgs::Bool>("can_plan_out", 10);
   planModePub_ = nh->advertise<std_msgs::String>("mode_out", 10);
@@ -252,6 +253,47 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
   {
     status_.inducedEndOfPath = true;
     return;
+  }
+
+  if( taskMsg.data == "deconflict_replan" || taskMsg.data == "deconflict" )
+  {
+    ROS_WARN("%s: Deconflict replan triggered", nh_->getNamespace().c_str());
+    path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for safety
+
+    Eigen::Vector3d avoidPos = minCstPath_.bottomRows(1).transpose();
+    graph_->add_avoid_frontier(avoidPos); // temporarily avoid the end position, clear avoidPos array at exit
+
+    if( status_.mode == plan_status::MODE::GLOBALEXP )
+    {
+      ROS_WARN("%s: Replanning globally", nh_->getNamespace().c_str());
+      Eigen::MatrixXd minCstPath = plan_globally(); 
+      if(minCstPath.rows() > 0) // global path found
+      {
+        ROS_WARN("%s: Global path found", nh_->getNamespace().c_str());
+        status_.mode = plan_status::MODE::GLOBALEXP;
+        minCstPath_ = minCstPath;
+      }
+      else
+      {
+        ROS_WARN("%s: Global path not found", nh_->getNamespace().c_str());
+        status_.mode = plan_status::MODE::LOCALEXP;
+      }
+    }
+
+    if( status_.mode != plan_status::MODE::GLOBALEXP )
+    {
+      ROS_WARN("%s: Replanning locally", nh_->getNamespace().c_str());
+      Eigen::MatrixXd minCstPath = plan_locally(); 
+      if(minCstPath.rows() > 0) // local path found
+      {
+        ROS_WARN("%s: Local path found", nh_->getNamespace().c_str());
+        status_.mode = plan_status::MODE::LOCALEXP;
+        minCstPath_ = minCstPath;
+      }
+    }
+
+    path_man::publish_path(minCstPath_, worldFrameId_, pathPub_);
+    graph_->remove_avoid_frontier(avoidPos);
   }
 
   if( taskMsg.data == "stuck_replan" || taskMsg.data == "stuck" || taskMsg.data == "unstuck" ) // gonna replan every time it's received
@@ -1075,6 +1117,13 @@ void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
   if( (isInitialized_ & 0x02) != 0x02 && poseHistMsg.poses.size() > 0 )
     isInitialized_ = isInitialized_ | 0x02;
 }
+
+// ***************************************************************************
+void scan_plan::pose_hist_neighbors_cb(const scan_plan::PoseArrays& poseArrays)
+{
+  
+}
+
 // ***************************************************************************
 void scan_plan::update_explored_volume(const double& expVol)
 {

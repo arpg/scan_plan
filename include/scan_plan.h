@@ -14,6 +14,7 @@
 #include "std_msgs/Float64.h"
 #include "std_msgs/Bool.h"
 #include "std_msgs/String.h"
+#include "scan_plan/PoseArrays.h"
 
 #include "path_man.h"
 
@@ -42,10 +43,13 @@ private:
   Eigen::MatrixXd posHist_; // initialize for 100 points. If the size increases, allocate memory for another 100 points and so on
   int posHistSize_;
 
+  
+
   ros::Subscriber octSub_;
   ros::Subscriber poseHistSub_;
   ros::Subscriber goalSub_;
   ros::Subscriber taskSub_;
+  ros::Subscriber poseHistNeighborsSub_;
 
   ros::Publisher canPlanPub_;
   ros::Publisher planModePub_; 
@@ -128,6 +132,7 @@ public:
   geometry_msgs::Quaternion yaw_to_quat(double yaw);
   bool min_path_len(Eigen::MatrixXd& path);
   void pose_hist_cb(const nav_msgs::Path& poseHistMsg);
+  void pose_hist_neighbors_cb(const scan_plan::PoseArrays&);
   void task_cb(const std_msgs::String&);
 
   Eigen::MatrixXd plan_locally();

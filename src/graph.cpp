@@ -557,6 +557,17 @@ void graph::add_avoid_frontier(const Eigen::Vector3d& avoidFrontier)
 }
 
 // ***************************************************************************
+void graph::remove_avoid_frontier(const Eigen::Vector3d& avoidFrontier)
+{
+  for(int i=0; i<avoidFrontiers_.size(); i++)
+    if( ( avoidFrontiers_[i] - avoidFrontier ).lpNorm<1>() < 1e-3 )
+    {
+      avoidFrontiers_.erase(avoidFrontiers_.begin() + i);
+      return; // return cz iterators may shift up after erase operation
+    }
+}
+
+// ***************************************************************************
 void graph::clear_avoid_frontiers()
 {
   avoidFrontiers_.resize(0);
