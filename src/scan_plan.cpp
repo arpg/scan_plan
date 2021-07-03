@@ -466,6 +466,9 @@ bool scan_plan::end_of_path()
     return true;
   if( (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) // if the robot is near the end point of the path
     return true;
+
+  std::cout << "Robot-Path Distance: " << path_man::point_to_path_dist(robPos, minCstPath_) << std::endl;
+
   if( path_man::point_to_path_dist(robPos, minCstPath_) > minPathDistTimerBasedReplan_ && (ros::Time::now() - status_.lastReplanTime).toSec() > timeIntTimerBasedReplan_ )
     return true; // if robot is away from planned path and time interval has elapsed
 
@@ -558,6 +561,11 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
         minCstPath = plan_locally("alpha", nTriesLocalPlan_); // gives a path regardless of vol gain
         if(minCstPath.rows() > 0)
           minCstPath_ = minCstPath;
+        else
+        {
+          minCstPath_ = posHist_.topRows(posHistSize_).colwise().reverse();
+          status_.mode = plan_status::MODE::MOVEANDREPLAN;
+        }
       }
     }
 
@@ -567,24 +575,55 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
       minCstPath = plan_locally("alpha", nTriesLocalPlan_); // gives a path regardless of vol gain
       if(minCstPath.rows() > 0)
         minCstPath_ = minCstPath;
+      else
+      {
+        minCstPath_ = posHist_.topRows(posHistSize_).colwise().reverse();
+        status_.mode = plan_status::MODE::MOVEANDREPLAN;
+      }
+    }
+  }
+  else if( (status_.mode == plan_status::MODE::MOVEANDREPLAN) ) // buggy perception/map
+  {
+    ROS_WARN("Could not sample enough around the robot, following pose history and replanning");
+
+    Eigen::MatrixXd minCstPath = plan_locally("alpha", nTriesLocalPlan_); // gives a path regardless of vol gain
+    if(minCstPath.rows() > 0)
+    {
+      minCstPath_ = minCstPath;
+      status_.mode = plan_status::MODE::LOCALEXP;
     }
   }
 
-  if( !path_man::are_equal(minCstPathPrev, minCstPath_) ) // if the path is updated, no need to validate in this iteration, otherwise validate
+  if( path_man::are_equal(minCstPathPrev, minCstPath_) ) // if the path is updated, no need to validate in this iteration, otherwise validate
   {
-    if( !pathMan_->validate_path(minCstPath_, localBndsMin_, localBndsMax_) )
+    update_base_to_world();
+    Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
+    octMan_->update_robot_pos(robPos);
+
+    // If moving and replanning, path is assumed valid, don't validate
+    if( status_.mode != plan_status::MODE::MOVEANDREPLAN && !pathMan_->validate_path(minCstPath_, localBndsMin_+robPos, localBndsMax_+robPos) )
     {
+      minCstPath_ = Eigen::MatrixXd(0,3); // TODO: the clipped path can be clipped behind the vehicle causing the vehicle to go back which needs to be fixed to take this statement out
       std::cout << "Updating graph occupancy (all)" << std::endl;
-      graph_-> update_occupancy(localBndsMin_, localBndsMax_, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
+      graph_-> update_occupancy(localBndsMin_+robPos, localBndsMax_+robPos, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
     }
     else
     {
       std::cout << "Updating graph occupancy (occupied only)" << std::endl;
-      graph_-> update_occupancy(localBndsMin_, localBndsMax_, true); // if path is obstacle-free update occupany of only occupied edges
+      graph_-> update_occupancy(localBndsMin_+robPos, localBndsMax_+robPos, true); // if path is obstacle-free update occupany of only occupied edges
     }
   }
   else // if path is updated (replan happened in this iteration)
+  {
     status_.lastReplanTime = ros::Time::now();
+
+    // only publish graph when replan happens to keep bags from going big
+    std::cout << "Publishing frontiers" << std::endl; 
+    graph_->publish_frontiers(frontiersPub_); 
+
+    std::cout << "Publishing  graph viz" << std::endl;
+    graph_->publish_viz(vizPub_);
+  }
 
   //TODO: Generate graph diconnect warning if no path is successfully added to the graph
   // Only add node to the graph if there is no existing node closer than radRob in graph lib, return success in that case since the graph is likely to be connected fine
@@ -605,12 +644,6 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
 
   std::cout << "Publishing lookahead path" << std::endl;
   path_man::publish_path(minCstPath_, worldFrameId_, pathPub_);
-
-  std::cout << "Publishing frontiers" << std::endl; 
-  graph_->publish_frontiers(frontiersPub_); 
-
-  std::cout << "Publishing  graph viz" << std::endl;
-  graph_->publish_viz(vizPub_);
 
   std_msgs::Float64 computeTimeMsg;
   computeTimeMsg.data = timeE.toSec();

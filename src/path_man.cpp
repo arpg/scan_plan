@@ -152,7 +152,7 @@ bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBn
   for (int i=0; i<(path.rows()-1); i++) // collision check for each segment
   {
     // assuming path is being followed, the vehicle should come in local proximity to all vertices, so it's sufficient to check the sourse vertices for in_bounds
-    if( !in_bounds(path.row(i),minBnd,maxBnd) || !octMan_->u_coll(path.row(i), path.row(i+1)) ) 
+    if( !in_bounds(path.row(i),path.row(i+1),minBnd,maxBnd) || !octMan_->u_coll(path.row(i), path.row(i+1)) ) 
       continue;
 
     if(i == 0)
@@ -174,16 +174,44 @@ bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBn
 }
 
 // ***************************************************************************
-bool path_man::in_bounds(const Eigen::Vector3d& ptIn, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd)
+bool path_man::in_bounds(const Eigen::Vector3d& ptInStart, const Eigen::Vector3d& ptInEnd, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd)
 {
-  if( ptIn(0) < minBnd(0) || ptIn(0) > maxBnd(0) )
-    return false;
-  if( ptIn(1) < minBnd(1) || ptIn(1) > maxBnd(1) )
-    return false;
-  if( ptIn(2) < minBnd(2) || ptIn(2) > maxBnd(2) )
-    return false;
 
-  return true;
+  // if both points are inside the box, the line connecting them is inside the box
+  if( ptInStart(0) > minBnd(0) && ptInStart(0) < maxBnd(0) && 
+      ptInStart(1) > minBnd(1) && ptInStart(1) < maxBnd(1) && 
+      ptInStart(2) > minBnd(2) && ptInStart(2) < maxBnd(2) && 
+    
+      ptInEnd(0) > minBnd(0) && ptInEnd(0) < maxBnd(0) && 
+      ptInEnd(1) > minBnd(1) && ptInEnd(1) < maxBnd(1) && 
+      ptInEnd(2) > minBnd(2) && ptInEnd(2) < maxBnd(2) ) 
+    return true;
+
+  // Function derived from http://www.3dkingdoms.com/weekly/weekly.php?a=21
+  // should independently be able to check without above but need computations before returning true
+  Eigen::Vector3d mExtent = (maxBnd - minBnd) * 0.5;
+	Eigen::Vector3d mM = (maxBnd + minBnd) * 0.5;
+
+	// Put line in box space
+	Eigen::Vector3d LB1 = ptInStart - mM;
+	Eigen::Vector3d LB2 = ptInEnd - mM;
+
+	// Get line midpoint and extent
+	Eigen::Vector3d LMid = (LB1 + LB2) * 0.5; 
+	Eigen::Vector3d L = (LB1 - LMid);
+	Eigen::Vector3d LExt( abs(L(0)), abs(L(1)), abs(L(2)) );
+
+	// Use Separating Axis Test
+	// Separation vector from box center to line center is LMid, since the line is in box space
+	if ( abs( LMid(0) ) > mExtent(0) + LExt(0) ) return false;
+	if ( abs( LMid(1) ) > mExtent(1) + LExt(1) ) return false;
+	if ( abs( LMid(2) ) > mExtent(2) + LExt(2) ) return false;
+	// Crossproducts of line and each axis
+	if ( abs( LMid(1) * L(2) - LMid(2) * L(1))  >  (mExtent(1) * LExt(2) + mExtent(2) * LExt(1)) ) return false;
+	if ( abs( LMid(0) * L(2) - LMid(2) * L(0))  >  (mExtent(0) * LExt(2) + mExtent(2) * LExt(0)) ) return false;
+	if ( abs( LMid(0) * L(1) - LMid(1) * L(0))  >  (mExtent(0) * LExt(1) + mExtent(1) * LExt(0)) ) return false;
+	// No separating axis, the line intersects
+	return true;
 }
 
 // ***************************************************************************
@@ -200,7 +228,9 @@ bool path_man::are_equal(const Eigen::MatrixXd& path1, const Eigen::MatrixXd& pa
 
   if( ( path1.topRows(1) - path2.topRows(1) ).lpNorm<1>() < 1e-6 && 
       ( path1.bottomRows(1) - path2.bottomRows(1) ).lpNorm<1>() < 1e-6 )
-    return false;
+    return true;
+
+  return false;
 }
 
 // ***************************************************************************

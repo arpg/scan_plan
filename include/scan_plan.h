@@ -20,7 +20,7 @@
 
 struct plan_status
 {
-  enum MODE {LOCALEXP, GOALPT, GLOBALEXP, REPORT, UNSTUCK};
+  enum MODE {LOCALEXP, GOALPT, GLOBALEXP, REPORT, UNSTUCK, MOVEANDREPLAN};
 
   MODE mode = MODE::LOCALEXP;
   Eigen::Vector3d goalPt = Eigen::Vector3d(0,0,0); // if planning to a goal point
