@@ -30,6 +30,7 @@ public:
   static std::pair<double, double> mean_heading_height_err(double yawIn, double heightIn, const Eigen::MatrixXd& pathIn);
   static double path_to_path_dist(const Eigen::MatrixXd& path1, const Eigen::MatrixXd& path2);
   static double point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::MatrixXd& pathIn);
+  static double point_to_line_dist(const Eigen::Vector3d&, const Eigen::Vector3d&, const Eigen::Vector3d&);
   static bool in_bounds(const Eigen::Vector3d&, const Eigen::Vector3d&, const Eigen::Vector3d&, const Eigen::Vector3d&);
   static bool are_equal(const Eigen::MatrixXd&, const Eigen::MatrixXd&);
 

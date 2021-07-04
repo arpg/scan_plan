@@ -117,20 +117,40 @@ double path_man::point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::Ma
   if( pathIn.rows() == 1 )
     return (pathIn.row(0).transpose() - ptIn).norm();
 
-  double minDist = ( ( ptIn - pathIn.row(0).transpose() ).cross( ptIn - pathIn.row(1).transpose() ) ).norm() / ( pathIn.row(1) - pathIn.row(0) ).norm(); // initialize with distance to first line seg
+  // initialize with distance to first line seg
+  double minDist = point_to_line_dist( ptIn, pathIn.row(0), pathIn.row(1) ); 
 
   if( pathIn.rows() == 2 )
     return minDist;
 
   for( int i=1; i<(pathIn.rows()-1); i++ )
   {
-    double dist = ( ( ptIn - pathIn.row(i).transpose() ).cross( ptIn - pathIn.row(i+1).transpose() ) ).norm() / ( pathIn.row(i+1) - pathIn.row(i) ).norm();
+    double dist = point_to_line_dist( ptIn, pathIn.row(i), pathIn.row(i+1) );
 
     if( dist < minDist )
       minDist = dist;
   }
 
   return minDist;
+}
+
+// ***************************************************************************
+double path_man::point_to_line_dist(const Eigen::Vector3d& P, const Eigen::Vector3d& A, const Eigen::Vector3d& B)
+{
+  // AB: Line Segment, P: Point away from the line segment
+  Eigen::Vector3d AB = B - A;
+  Eigen::Vector3d AP = P - A;
+  
+  if( AP.dot(AB) <= 0.0 )
+    return AP.norm();
+
+  Eigen::Vector3d BP = P - B;
+
+  if( BP.dot(AB) >= 0.0 )
+    return BP.norm();
+
+  return sqrt( AB.cross(AP).squaredNorm() / AB.squaredNorm() );
+
 }
 
 // ***************************************************************************
