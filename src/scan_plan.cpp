@@ -563,8 +563,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
           minCstPath_ = minCstPath;
         else
         {
-          minCstPath_ = posHist_.topRows(posHistSize_).colwise().reverse();
-          status_.mode = plan_status::MODE::MOVEANDREPLAN;
+          //minCstPath_ = posHist_.topRows(posHistSize_).colwise().reverse();
+          //status_.mode = plan_status::MODE::MOVEANDREPLAN;
         }
       }
     }
@@ -577,8 +577,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
         minCstPath_ = minCstPath;
       else
       {
-        minCstPath_ = posHist_.topRows(posHistSize_).colwise().reverse();
-        status_.mode = plan_status::MODE::MOVEANDREPLAN;
+        //minCstPath_ = posHist_.topRows(posHistSize_).colwise().reverse();
+       // status_.mode = plan_status::MODE::MOVEANDREPLAN;
       }
     }
   }
