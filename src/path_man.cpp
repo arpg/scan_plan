@@ -59,8 +59,8 @@ void path_man::publish_empty_path(const std::string& frameId, const ros::Publish
 // ***************************************************************************
 void path_man::publish_path(const Eigen::MatrixXd& eigPath, const std::string& frameId, const ros::Publisher& pathPub)
 {
-  if(eigPath.rows() < 2)
-    return;
+  //if(eigPath.rows() < 2)
+  //  return;
 
   nav_msgs::Path path;
 
