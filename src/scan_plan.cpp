@@ -403,6 +403,8 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   octMan_->update_esdf(localBndsMin_+robPos, localBndsMax_+robPos);
   octMan_->update_robot_pos(robPos);
 
+  status_.mapUpdated = true;
+
   //std::cout << "Checking for End-of-Path" << std::endl;
   //if( (minCstPath_.rows() > 0) && ( (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) )
   //{
@@ -482,6 +484,13 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
 
   if( (isInitialized_ & 0x03) != 0x03 )
     return;
+
+  if( status_.mapUpdated ) // rate of the timer set to the slowest of the map or timer rate to ensure map is updated every time
+    status_.mapUpdated = false;
+  else
+    return;
+
+  bool triedReplan = true;
 
   ros::Time timeS = ros::Time::now();
   //update_base_to_world();
@@ -593,19 +602,39 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
       status_.mode = plan_status::MODE::LOCALEXP;
     }
   }
+  else
+    triedReplan = false;
 
-  if( path_man::are_equal(minCstPathPrev, minCstPath_) ) // if the path is updated, no need to validate in this iteration, otherwise validate
+  // pose graph follow is considered a successful replan
+  bool didReplan = !path_man::are_equal(minCstPathPrev, minCstPath_) || (status_.mode == plan_status::MODE::MOVEANDREPLAN); 
+
+  if( triedReplan && !didReplan )
+    status_.nFailedReplans++;
+  else if( triedReplan && didReplan )
+    status_.nFailedReplans = 0;
+
+  if( status_.nFailedReplans >= nTriesReplan_ ) // assuming nTriesReplan_ > 0
+  {
+    minCstPath_ = posHist_.topRows(posHistSize_).colwise().reverse();
+    status_.mode = plan_status::MODE::MOVEANDREPLAN;
+
+    didReplan = true;
+    status_.nFailedReplans = 0;
+  }
+
+  if( !didReplan ) // if the path is not updated, and vehicle is not following the pose graph, then validate the path
   {
     update_base_to_world();
     Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
     octMan_->update_robot_pos(robPos);
 
-    // If moving and replanning, path is assumed valid, don't validate
-    if( status_.mode != plan_status::MODE::MOVEANDREPLAN && !pathMan_->validate_path(minCstPath_, localBndsMin_+robPos, localBndsMax_+robPos) )
+    if( !pathMan_->validate_path(minCstPath_, localBndsMin_+robPos, localBndsMax_+robPos) && (status_.nPathInvalidations++) >= nPathInvalidations_ )
     {
       minCstPath_ = Eigen::MatrixXd(0,3); // TODO: the clipped path can be clipped behind the vehicle causing the vehicle to go back which needs to be fixed to take this statement out
       std::cout << "Updating graph occupancy (all)" << std::endl;
       graph_-> update_occupancy(localBndsMin_+robPos, localBndsMax_+robPos, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
+
+      status_.nPathInvalidations = 0;
     }
     else
     {
@@ -613,8 +642,11 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
       graph_-> update_occupancy(localBndsMin_+robPos, localBndsMax_+robPos, true); // if path is obstacle-free update occupany of only occupied edges
     }
   }
-  else // if path is updated (replan happened in this iteration)
+  else // if path is updated or vehicle is following pose graph
   {
+    std::cout << "Updating graph occupancy (occupied only)" << std::endl;
+    graph_-> update_occupancy(localBndsMin_+robPos, localBndsMax_+robPos, true); // if path is obstacle-free update occupany of only occupied edges
+
     status_.lastReplanTime = ros::Time::now();
 
     // only publish graph when replan happens to keep bags from going big

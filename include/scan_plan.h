@@ -29,7 +29,9 @@ struct plan_status
   double volExp = 0; // cubic meters per volGainMonitorDur secs (since lastVolGainCheck)
   ros::Time lastReplanTime = ros::Time::now();
 
-  bool changeDetected_ = false;
+  bool mapUpdated = false;
+  int nFailedReplans = 0;
+  int nPathInvalidations = 0;
   bool inducedEndOfPath = false;
 };
 
@@ -101,7 +103,9 @@ private:
   double volGainMonitorDur_; // secs
   double minVolGainLocalPlan_;
   int nTriesLocalPlan_;
-  int nTriesGlobalPlan_;
+  int nTriesGlobalPlan_; // number of frontiers to plan
+  int nTriesReplan_; // number of unsuccessful replans to declare buggy perception (move and replan)
+  int nTriesPathValidation_; // number of consecutive invalidation attempt to delare a dynamic obstacle
 
   double minPathDistTimerBasedReplan_;
   double timeIntTimerBasedReplan_;
