@@ -107,8 +107,8 @@ public:
   ~graph();
   graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int maxEdgesPerVertex, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>&, const double& );
   
-  bool add_vertex(const gvert&);
-  bool add_vertex(const gvert&, VertexDescriptor&);
+  bool add_vertex(const gvert&, bool = true);
+  bool add_vertex(const gvert&, VertexDescriptor&, bool = true);
   bool u_coll(const gvert, const gvert);  
   void publish_viz(ros::Publisher&);
   void publish_frontiers(ros::Publisher&);
@@ -144,6 +144,8 @@ public:
   Eigen::Vector3d get_tgt_pos(const EdgeDescriptor& edgeD);
   frontier closest_frontier(const Eigen::Vector3d& ptIn, double& dist);
   Eigen::MatrixXd plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries);
+
+  void set_min_dist_nodes(const double&);
 };
 
 // ***************************************************************************

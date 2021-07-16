@@ -88,6 +88,9 @@ private:
   Eigen::Vector3d localBndsMin_;  
   Eigen::Vector3d localBndsMax_;
 
+  Eigen::Vector3d localBndsDynMin_;  
+  Eigen::Vector3d localBndsDynMax_;
+
   Eigen::Vector3d geoFenceMin_;
   Eigen::Vector3d geoFenceMax_;
 

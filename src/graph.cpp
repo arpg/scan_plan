@@ -41,15 +41,17 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int m
 }
 
 // ***************************************************************************
-bool graph::add_vertex(const gvert& vertIn)
+bool graph::add_vertex(const gvert& vertIn, bool ignodeMinDistNodes)
 {
   VertexDescriptor vertInDesc;
-  return add_vertex(vertIn,  vertInDesc);
+  return add_vertex(vertIn,  vertInDesc, ignodeMinDistNodes);
 }
 
 // ***************************************************************************
-bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc)
+bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc, bool ignoreMinDistNodes)
 {
+  // return true if a connected vertex is added, false if either vertex is not added or added but is not connected
+
   // TODO: Consider using manhattan distance as the edge cost to speed up 
   bool success = false;
   bool vertexPresent = false;
@@ -66,7 +68,7 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc)
 
     double dist = (vertIn.pos - (*adjList_)[*it].pos).squaredNorm();
 
-    if( dist < minDistNodes_ )
+    if( ignoreMinDistNodes && dist < minDistNodes_ )
       return false; // a node already exists at the same position
 
     if( dist > pow(radNear_,2) )
@@ -84,11 +86,16 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc)
     vertInDesc = boost::add_vertex(vertIn, *adjList_);
     success = true;
   }
+  else
+  {
+    vertInDesc = boost::add_vertex(vertIn, *adjList_);
+    success = false;
+  }
 
   for(int i=0; i<vertsOutDesc_.size(); i++) 
     boost::add_edge( vertInDesc, vertsOutDesc_[i], vertsOutDist_[i], *adjList_ );
 
-  if(vertIn.isFrontier && success)
+  if(vertIn.isFrontier)
   {
     frontier front;
     front.vertDesc = vertInDesc;
@@ -98,8 +105,8 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc)
 
   if(!isHomeVertConnected_ && boost::in_degree(homeVert_, *adjList_) < 1 ) // if home was not connected and is still not connected (assuming the node is not added above unless connected to home node)
   {
-    if( !success )
-      vertInDesc = boost::add_vertex(vertIn, *adjList_);
+    //if( !success )
+    //  vertInDesc = boost::add_vertex(vertIn, *adjList_);
     homeVert_ = vertInDesc;
   }
   else if(!isHomeVertConnected_ && boost::in_degree(homeVert_, *adjList_) >= 1) // if home was not connected and is now connected
@@ -652,6 +659,12 @@ bool graph::is_entrance(const Eigen::Vector3d& ptIn)
 bool graph::is_empty_frontiers()
 {
   return frontiers_.empty();
+}
+
+// ***************************************************************************
+void graph::set_min_dist_nodes(const double& dist)
+{
+  minDistNodes_ = dist;
 }
 
 // ***************************************************************************

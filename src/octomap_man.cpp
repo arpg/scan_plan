@@ -128,7 +128,12 @@ bool octomap_man::u_coll_air(const Eigen::Vector4d& pose) // x,y,z,theta
   double distObs = octDist_->getDistance ( octomap::point3d( pose(0), pose(1), pose(2) ) );
 
   if ( distObs == DynamicEDTOctomap::distanceValue_Error )
-    return true;
+  {
+    if(esdfUnknownAsOccupied_) 
+      return true;
+    else
+      return false;
+  }
 
   if ( distObs <= radRob_ )
     return true;
@@ -349,6 +354,18 @@ void octomap_man::update_robot_pos(const Eigen::Vector3d& robPos)
 std::string octomap_man::vehicle_type()
 {
   return vehicleType_;
+}
+
+// ***************************************************************************
+bool octomap_man::get_esdf_unknown_as_occupied()
+{
+  return esdfUnknownAsOccupied_;
+}
+
+// ***************************************************************************
+void octomap_man::set_esdf_unknown_as_occupied(const bool& esdfUnkownAsOccupied)
+{
+  esdfUnknownAsOccupied_ = esdfUnkownAsOccupied;
 }
 
 // ***************************************************************************

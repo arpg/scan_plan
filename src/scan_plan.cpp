@@ -207,6 +207,8 @@ void scan_plan::setup_scan_plan()
   while(!nh_->getParam("min_vol_gain_local_plan", minVolGainLocalPlan_));
   while(!nh_->getParam("no_of_tries_local_plan", nTriesLocalPlan_));
   while(!nh_->getParam("no_of_tries_global_plan", nTriesGlobalPlan_));
+  while(!nh_->getParam("no_of_tries_replan", nTriesReplan_));
+  while(!nh_->getParam("no_of_tries_path_validation", nTriesPathValidation_));
   while(!nh_->getParam("succ_rad_end_of_path", endOfPathSuccRad_));
 
   geoFenceMin_(0) = geoFenceMin[0];
@@ -216,6 +218,18 @@ void scan_plan::setup_scan_plan()
   geoFenceMax_(0) = geoFenceMax[0];
   geoFenceMax_(1) = geoFenceMax[1];
   geoFenceMax_(2) = geoFenceMax[2];
+
+  std::vector<double> minDynBnds, maxDynBnds;
+  while(!nh_->getParam("min_bounds_local_dyn", minDynBnds)); // [x_min, y_min, z_min]
+  while(!nh_->getParam("max_bounds_local_dyn", maxDynBnds)); // [x_max, y_max, z_max]
+
+  localBndsDynMin_(0) = minDynBnds[0];
+  localBndsDynMin_(1) = minDynBnds[1];
+  localBndsDynMin_(2) = minDynBnds[2];
+
+  localBndsDynMax_(0) = maxDynBnds[0];
+  localBndsDynMax_(1) = maxDynBnds[1];
+  localBndsDynMax_(2) = maxDynBnds[2];
 }
 
 // ***************************************************************************
@@ -445,7 +459,7 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 
   if( (isInitialized_ & 0x01) != 0x01 )
   {
-    status_.changeDetected_ = false;
+    //status_.changeDetected_ = false;
     //update_explored_volume(octTree->getNumLeafNodes() * pow(octmpMsg.resolution,3));
     isInitialized_ = isInitialized_ | 0x01;
   }
@@ -471,7 +485,7 @@ bool scan_plan::end_of_path()
 
   std::cout << "Robot-Path Distance: " << path_man::point_to_path_dist(robPos, minCstPath_) << std::endl;
 
-  if( path_man::point_to_path_dist(robPos, minCstPath_) > minPathDistTimerBasedReplan_ && (ros::Time::now() - status_.lastReplanTime).toSec() > timeIntTimerBasedReplan_ )
+  if( path_man::point_to_path_dist(robPos, minCstPath_) > minPathDistTimerBasedReplan_ )
     return true; // if robot is away from planned path and time interval has elapsed
 
   return false;
@@ -605,13 +619,16 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   else
     triedReplan = false;
 
-  // pose graph follow is considered a successful replan
-  bool didReplan = !path_man::are_equal(minCstPathPrev, minCstPath_) || (status_.mode == plan_status::MODE::MOVEANDREPLAN); 
+  bool didReplan = !path_man::are_equal(minCstPathPrev, minCstPath_); 
 
-  if( triedReplan && !didReplan )
+  // already catering for failed replans if in MOVEANDREPLAN, no need to increment, no need to validate the path
+  if( triedReplan && !didReplan && status_.mode != plan_status::MODE::MOVEANDREPLAN )
     status_.nFailedReplans++;
-  else if( triedReplan && didReplan )
+  else if( didReplan || status_.mode == plan_status::MODE::MOVEANDREPLAN )
+  {
     status_.nFailedReplans = 0;
+    status_.nPathInvalidations = 0;
+  }
 
   if( status_.nFailedReplans >= nTriesReplan_ ) // assuming nTriesReplan_ > 0
   {
@@ -620,34 +637,30 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
 
     didReplan = true;
     status_.nFailedReplans = 0;
+    status_.nPathInvalidations = 0;
   }
 
-  if( !didReplan ) // if the path is not updated, and vehicle is not following the pose graph, then validate the path
+  update_base_to_world();
+  Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
+  octMan_->update_robot_pos(robPos);
+
+  bool esdfUnknownAsOccupied = octMan_->get_esdf_unknown_as_occupied();
+  octMan_->set_esdf_unknown_as_occupied(false); // to validate path and graph, relax the condition cz path and graph are not built in unknown areas at the strictest
+
+  // if the path is not updated, and vehicle is not following the pose graph, then validate the path
+  if( !didReplan && status_.mode != plan_status::MODE::MOVEANDREPLAN &&
+      !pathMan_->validate_path(minCstPath_, robPos+localBndsDynMin_, robPos+localBndsDynMax_) && (status_.nPathInvalidations++) >= nTriesPathValidation_ ) 
   {
-    update_base_to_world();
-    Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
-    octMan_->update_robot_pos(robPos);
+    minCstPath_ = Eigen::MatrixXd(0,3); // TODO: the clipped path can be clipped behind the vehicle causing the vehicle to go back which needs to be fixed to take this statement out
+    std::cout << "Updating graph occupancy (all)" << std::endl;
+    graph_-> update_occupancy(localBndsDynMin_+robPos, localBndsDynMax_+robPos, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
 
-    if( !pathMan_->validate_path(minCstPath_, localBndsMin_+robPos, localBndsMax_+robPos) && (status_.nPathInvalidations++) >= nPathInvalidations_ )
-    {
-      minCstPath_ = Eigen::MatrixXd(0,3); // TODO: the clipped path can be clipped behind the vehicle causing the vehicle to go back which needs to be fixed to take this statement out
-      std::cout << "Updating graph occupancy (all)" << std::endl;
-      graph_-> update_occupancy(localBndsMin_+robPos, localBndsMax_+robPos, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
-
-      status_.nPathInvalidations = 0;
-    }
-    else
-    {
-      std::cout << "Updating graph occupancy (occupied only)" << std::endl;
-      graph_-> update_occupancy(localBndsMin_+robPos, localBndsMax_+robPos, true); // if path is obstacle-free update occupany of only occupied edges
-    }
+    status_.nPathInvalidations = 0;
   }
-  else // if path is updated or vehicle is following pose graph
+  else
   {
     std::cout << "Updating graph occupancy (occupied only)" << std::endl;
-    graph_-> update_occupancy(localBndsMin_+robPos, localBndsMax_+robPos, true); // if path is obstacle-free update occupany of only occupied edges
-
-    status_.lastReplanTime = ros::Time::now();
+    graph_-> update_occupancy(2*localBndsDynMin_+robPos, 2*localBndsDynMax_+robPos, true); // if path is obstacle-free update occupany of only occupied edges
 
     // only publish graph when replan happens to keep bags from going big
     std::cout << "Publishing frontiers" << std::endl; 
@@ -656,6 +669,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
     std::cout << "Publishing  graph viz" << std::endl;
     graph_->publish_viz(vizPub_);
   }
+
+  octMan_->set_esdf_unknown_as_occupied(esdfUnknownAsOccupied);
 
   //TODO: Generate graph diconnect warning if no path is successfully added to the graph
   // Only add node to the graph if there is no existing node closer than radRob in graph lib, return success in that case since the graph is likely to be connected fine
@@ -691,75 +706,82 @@ Eigen::MatrixXd scan_plan::plan_home()
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
   octMan_->update_robot_pos(robPos);
 
+  gvert gphVert;
+  gphVert.pos = robPos;
+  gphVert.commSig = 0;
+  gphVert.isFrontier = false;
+  gphVert.terrain = gvert::Terrain::UNKNOWN;
+
   std::cout << "Planning to graph" << std::endl;
-  VertexDescriptor vertD1;
-  Eigen::MatrixXd minCstPath1 = plan_to_graph(robPos, vertD1);
-  if(minCstPath1.rows() < 2)
+
+  VertexDescriptor srcVertD;
+  if( !graph_->add_vertex(gphVert, srcVertD, true) ); // bool ignoreMinDistNodes = true
     return posHist_.topRows(posHistSize_).colwise().reverse();
 
   std::cout << "Planning vertex to home vertex" << std::endl;
-  Eigen::MatrixXd minCstPath2 = graph_->plan_home(vertD1);
-  if(minCstPath2.rows() < 1)
+  Eigen::MatrixXd minCstPath = graph_->plan_home(srcVertD);
+  if(minCstPath.rows() < 1)
     return posHist_.topRows(posHistSize_).colwise().reverse();
 
-  std::cout << "Appending paths together" << std::endl;
-  Eigen::MatrixXd minCstPath(minCstPath1.rows()+minCstPath2.rows(), 3);
-  minCstPath << minCstPath1, minCstPath2;
   return minCstPath;
 }
 
 // ***************************************************************************
 Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
 {
+  // Input goalPos is NOT assumed to be on the ground
+
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
   octMan_->update_robot_pos(robPos);
 
+  Eigen::Vector3d goalPtProj = goalPos;
+  if( octMan_->vehicle_type() != "air" && octMan_->cast_ray_down(goalPos, goalPtProj) != 1 )
+  {
+    ROS_WARN("Could not project the goal point to the ground");
+    return Eigen::Vector3d(0,0);
+  }
+
   std::cout << "Checking if goal and robot positions are different" << std::endl;
-  if(goalPos == robPos) // if goal and robot pos is same
+  if( (goalPtProj - robPos).lpNorm<1>() < 1e-3 ) // if goal and robot pos is same
     return Eigen::MatrixXd(0,0);
 
   std::cout << "Checking if goal and robot positions can be connected via a straight line" << std::endl;
-  if(!octMan_->u_coll(robPos, goalPos)) // try to connect via straight line
+  if( !octMan_->u_coll(robPos, goalPtProj) ) // try to connect via straight line
   {
     Eigen::MatrixXd minCstPath(2,3);
 
     minCstPath.row(0) = robPos;
-    minCstPath.row(1) = goalPos;
+    minCstPath.row(1) = goalPtProj;
     return minCstPath;
   }
 
-  std::cout << "Checking if goal and robot positions are within local bounds of each other" << std::endl;
-  if( ((goalPos-robPos-localBndsMin_).array() > 0).all() && ((goalPos-robPos-localBndsMax_).array() < 0).all() ) // if goal is within local bounds of robot, try rrt
-  {
-    int idLeaf = update_local_tree(robPos, goalPos);
-
-    if(idLeaf != 0) // if a path is found
-      return rrtTree_->get_path(idLeaf);
-  }
+  gvert gphVert;
+  gphVert.pos = robPos;
+  gphVert.commSig = 0;
+  gphVert.isFrontier = false;
+  gphVert.terrain = gvert::Terrain::UNKNOWN;
 
   std::cout << "Planning to graph" << std::endl;
-  VertexDescriptor vertD1;
-  Eigen::MatrixXd minCstPath1 = plan_to_graph(robPos, vertD1);
-  if(minCstPath1.rows() < 2)
+  VertexDescriptor srcVertD;
+  if( !graph_->add_vertex(gphVert, srcVertD, true) ); // bool ignoreMinDistNodes = true
     return Eigen::MatrixXd(0,0);
 
   std::cout << "Planning from graph" << std::endl;
-  octMan_->update_esdf(localBndsMin_+goalPos, localBndsMax_+goalPos); // getting the esdf around the goal rather than default robot position
-  VertexDescriptor vertD2;
-  Eigen::MatrixXd minCstPath2 = plan_from_graph(goalPos, vertD2);
-  if(minCstPath2.rows() < 2)
+  octMan_->update_esdf(localBndsMin_+goalPtProj, localBndsMax_+goalPtProj); // getting the esdf around the goal rather than default robot position
+
+  gphVert.pos = goalPtProj;
+  VertexDescriptor tgtVertD;
+  if( !graph_->add_vertex(gphVert, tgtVertD, true) ); // bool ignoreMinDistNodes = true
     return Eigen::MatrixXd(0,0);
+
   octMan_->update_esdf(localBndsMin_+robPos, localBndsMax_+robPos);  // getting the esdf back around default robot position
 
   std::cout << "Planning vertex to vertex" << std::endl;
-  Eigen::MatrixXd minCstPathG = graph_->plan_shortest_path(vertD1, vertD2);
-  if(minCstPathG.rows() < 2)
+  Eigen::MatrixXd minCstPath = graph_->plan_shortest_path(srcVertD, tgtVertD);
+  if(minCstPath.rows() < 1)
     return Eigen::MatrixXd(0,0);
 
-  std::cout << "Appending paths together" << std::endl;
-  Eigen::MatrixXd minCstPath(minCstPath1.rows()+minCstPathG.rows()+minCstPath2.rows(), 3);
-  minCstPath << minCstPath1, minCstPathG, minCstPath2;
   return minCstPath;
 }
 
@@ -848,22 +870,25 @@ Eigen::MatrixXd scan_plan::plan_globally()
     return path;
   }
 */
+
+  gvert gphVert;
+  gphVert.pos = robPos;
+  gphVert.commSig = 0;
+  gphVert.isFrontier = false;
+  gphVert.terrain = gvert::Terrain::UNKNOWN;
+
   std::cout << "Planning to graph" << std::endl;
-  VertexDescriptor vertD1;
-  Eigen::MatrixXd minCstPath1 = plan_to_graph(robPos, vertD1);
-  if(minCstPath1.rows() < 2)
+  VertexDescriptor srcVertD;
+  if( !graph_->add_vertex(gphVert, srcVertD, true) ); // bool ignoreMinDistNodes = true
     return Eigen::MatrixXd(0,0);
 
   std::cout << "Path to graph non-empty, planning over graph" << std::endl;
-  Eigen::MatrixXd minCstPath2 = graph_->plan_to_frontier(vertD1, nTriesGlobalPlan_);
+  Eigen::MatrixXd minCstPath = graph_->plan_to_frontier(srcVertD, nTriesGlobalPlan_);
 
-  if(minCstPath2.rows() < 1)
+  if(minCstPath.rows() < 1)
     return Eigen::MatrixXd(0,0);
   std::cout << "Planning over graph successful" << std::endl;
 
-  std::cout << "Appending paths together" << std::endl;
-  Eigen::MatrixXd minCstPath(minCstPath1.rows()+minCstPath2.rows(), 3);
-  minCstPath << minCstPath1, minCstPath2;
   return minCstPath;
 }
 
@@ -1000,7 +1025,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
       Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
       if(!pathMan_->path_len_check(path)) // minimum path length condition
         continue;
-      if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) ) // avoid pos condition
+      if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) || graph_->is_entrance(path.bottomRows(1).transpose()) ) // avoid pos condition
         continue;
 
       minCst = 0.0;

@@ -172,7 +172,7 @@ bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBn
   for (int i=0; i<(path.rows()-1); i++) // collision check for each segment
   {
     // assuming path is being followed, the vehicle should come in local proximity to all vertices, so it's sufficient to check the sourse vertices for in_bounds
-    if( !in_bounds(path.row(i),path.row(i+1),minBnd,maxBnd) || !octMan_->u_coll(path.row(i), path.row(i+1)) ) 
+    if( !in_bounds(path.row(i),path.row(i+1), minBnd, maxBnd) || !octMan_->u_coll(path.row(i), path.row(i+1)) ) 
       continue;
 
     if(i == 0)

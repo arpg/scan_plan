@@ -56,6 +56,8 @@ succ_rad_end_of_path: 1.5
 min_vol_gain_local_plan: 15.0
 no_of_tries_local_plan: 2
 no_of_tries_global_plan: 20
+no_of_tries_replan: 5
+no_of_tries_path_validation: 5
 
 
 verbose: true

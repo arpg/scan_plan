@@ -66,6 +66,8 @@ public:
   void create_robot_surface(const double&);
 
   std::string vehicle_type();
+  void set_esdf_unknown_as_occupied(const bool& esdfUnkownAsOccupied);
+  bool get_esdf_unknown_as_occupied();
 };
 
 #endif

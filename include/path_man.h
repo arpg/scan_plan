@@ -18,7 +18,7 @@ private:
   octomap_man* octMan_;
   
 public:
-  path_man(const double& minPathLen, octomap_man* octMan);
+  path_man(const double&, octomap_man*);
   bool validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd);
   bool path_len_check(const Eigen::MatrixXd& path);
 
