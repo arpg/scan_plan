@@ -659,9 +659,6 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
   octMan_->update_robot_pos(robPos);
 
-  bool esdfUnknownAsOccupied = octMan_->get_esdf_unknown_as_occupied();
-  octMan_->set_esdf_unknown_as_occupied(false); // to validate path and graph, relax the condition cz path and graph are not built in unknown areas at the strictest
-
   std::cout << "Number of path rows before validation: " << minCstPath_.rows() << std::endl;
   bool isPathValid = true;
   if( status_.mode != plan_status::MODE::MOVEANDREPLAN )
@@ -681,7 +678,13 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   {
     minCstPath_ = Eigen::MatrixXd(0,3); // TODO: the clipped path can be clipped behind the vehicle causing the vehicle to go back which needs to be fixed to take this statement out
     std::cout << "Updating graph occupancy (all)" << std::endl;
+
+    bool esdfUnknownAsOccupied = octMan_->get_esdf_unknown_as_occupied();
+    octMan_->set_esdf_unknown_as_occupied(false); // to validate path and graph, relax the condition cz path and graph are not built in unknown areas at the strictest
+
     graph_-> update_occupancy(localBndsDynMin_+robPos, localBndsDynMax_+robPos, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
+
+    octMan_->set_esdf_unknown_as_occupied(esdfUnknownAsOccupied);
 
     status_.nPathInvalidations = 0;
 
@@ -709,7 +712,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
     graph_->publish_viz(vizPub_);
   }
 
-  octMan_->set_esdf_unknown_as_occupied(esdfUnknownAsOccupied);
+
 
   //TODO: Generate graph diconnect warning if no path is successfully added to the graph
   // Only add node to the graph if there is no existing node closer than radRob in graph lib, return success in that case since the graph is likely to be connected fine
