@@ -15,6 +15,7 @@
 #include "std_msgs/Bool.h"
 #include "std_msgs/String.h"
 #include "scan_plan_msgs/PointArrays.h"
+#include "boost/algorithm/string/predicate.hpp"
 
 #include "path_man.h"
 
@@ -130,7 +131,7 @@ public:
   bool update_base_to_world();
   Eigen::Vector3d transform_to_eigen_pos(const geometry_msgs::TransformStamped& transformIn);
   void timer_replan_cb(const ros::TimerEvent&);
-  void goal_cb(const geometry_msgs::PointStamped&);
+  void goal_cb(const geometry_msgs::PoseStamped&);
   bool add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int idLookaheadLeaf, graph* gph) ;
   void octomap_cb(const octomap_msgs::Octomap& octmpMsg);
   Eigen::Vector3d geofence_saturation(const Eigen::Vector3d& posIn);
@@ -141,6 +142,7 @@ public:
   void pose_hist_cb(const nav_msgs::Path& poseHistMsg);
   void pos_hist_neighbors_cb(const scan_plan_msgs::PointArrays&);
   void task_cb(const std_msgs::String&);
+  void task_cb_str(const std::string&);
 
   Eigen::MatrixXd plan_locally();
   Eigen::MatrixXd plan_to_graph(const Eigen::Vector3d& fromPos, VertexDescriptor& toVertex);

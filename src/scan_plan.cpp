@@ -257,6 +257,15 @@ Eigen::Vector3d scan_plan::transform_to_eigen_pos(const geometry_msgs::Transform
 }
 
 // ***************************************************************************
+void scan_plan::task_cb_str(const std::string& taskIn)
+{
+  std_msgs::String taskMsg;
+  taskMsg.data = taskIn;
+
+  task_cb(taskMsg);
+}
+
+// ***************************************************************************
 void scan_plan::task_cb(const std_msgs::String& taskMsg)
 {
   // INDUCED TASK LOGIC FUNCTION
@@ -270,7 +279,7 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
     return;
   }
 
-  if( taskMsg.data == "deconflict_replan" || taskMsg.data == "deconflict" )
+  if( boost::iequals(taskMsg.data , "deconflict") )
   {
     ROS_WARN("%s: Deconflict replan triggered", nh_->getNamespace().c_str());
     path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for safety
@@ -311,7 +320,7 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
     graph_->remove_avoid_frontier(avoidPos);
   }
 
-  if( taskMsg.data == "stuck_replan" || taskMsg.data == "stuck" || taskMsg.data == "unstuck" ) // gonna replan every time it's received
+  if( boost::iequals(taskMsg.data, "unstuck") ) // gonna replan every time it's received
   {
     graph_->add_avoid_frontier(minCstPath_.bottomRows(1).transpose()); // temporarily avoid the end position, TODO: clear avoidPos array when the end of stuck path is reached / on timer
 
@@ -332,7 +341,7 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
   }
 
   //TODO: right now it only replans to the goal point if the mode changes but what if it's already in goal point mode and the goal point changes 
-  if( (taskMsg.data == "guiCommand" || taskMsg.data == "gui_command" || taskMsg.data == "guiCmd" || taskMsg.data == "gui_cmd") && status_.mode != plan_status::MODE::GOALPT )
+  if( ( boost::iequals(taskMsg.data, "guiCmd") || boost::iequals(taskMsg.data, "goalpt") ) && status_.mode != plan_status::MODE::GOALPT )
   {  
     path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for computation
     Eigen::MatrixXd minCstPath = plan_to_point(status_.goalPt);
@@ -354,7 +363,7 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
   //if( status_.mode == plan_status::MODE::UNSTUCK )
   //  return;
 
-  if( (taskMsg.data == "report" || taskMsg.data == "Report" || taskMsg.data == "home" || taskMsg.data == "Home") && status_.mode != plan_status::MODE::REPORT )
+  if( ( boost::iequals(taskMsg.data, "report") || boost::iequals(taskMsg.data, "home") ) && status_.mode != plan_status::MODE::REPORT )
   {
     path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for computation
 
@@ -372,7 +381,7 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
     return;
   }
 
-  if( (taskMsg.data == "explore" || taskMsg.data == "Explore") && (status_.mode != plan_status::MODE::LOCALEXP && status_.mode != plan_status::MODE::GLOBALEXP) )
+  if( boost::iequals(taskMsg.data, "explore") && (status_.mode != plan_status::MODE::LOCALEXP && status_.mode != plan_status::MODE::GLOBALEXP) )
   {
     if(status_.mode = plan_status::MODE::REPORT) // if transitioning from report mode, then flip the path so the robot goes back to where it came from
     {
@@ -675,6 +684,17 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
     graph_-> update_occupancy(localBndsDynMin_+robPos, localBndsDynMax_+robPos, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
 
     status_.nPathInvalidations = 0;
+
+    if( status_.mode == plan_status::MODE::GOALPT )
+    {
+      status_.mode = plan_status::MODE::LOCALEXP; // set a different mode to retrigger GOALPT, also fall back to it if task_cb doesn't update the path 
+      task_cb_str("GOALPT");
+    }
+    if( status_.mode == plan_status::MODE::REPORT )
+    {
+      status_.mode = plan_status::MODE::LOCALEXP; // set a different mode to retrigger REPORT, also fall back to it if task_cb doesn't update the path 
+      task_cb_str("REPORT");
+    }
   }
   else
   {
@@ -1134,21 +1154,20 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
 }
 
 // ***************************************************************************
-void scan_plan::goal_cb(const geometry_msgs::PointStamped& goalMsg)
+void scan_plan::goal_cb(const geometry_msgs::PoseStamped& goalMsg)
 {
-  status_.goalPt(0) = goalMsg.point.x;
-  status_.goalPt(1) = goalMsg.point.y;
-  status_.goalPt(2) = goalMsg.point.z;
+  Eigen::Vector3d goalPtIn(goalMsg.pose.position.x, goalMsg.pose.position.y, goalMsg.pose.position.z);
 
-  if( status_.mode == plan_status::MODE::GOALPT )
-  { 
-    status_.mode = plan_status::MODE::LOCALEXP;
+  if( (status_.goalPt - goalPtIn).lpNorm<1>() < 1e-3 ) // if the goal point changes update the goal
+    return;
 
-    std_msgs::String strMsg;
-    strMsg.data = "guiCmd";
+  status_.goalPt = goalPtIn;
 
-    task_cb(strMsg);
-  }
+  if( status_.mode != plan_status::MODE::GOALPT ) // if the goal point changes and current mode is GOALPT, replan to the new goal
+    return;
+
+  status_.mode = plan_status::MODE::LOCALEXP; // set a different mode than GOALPT so the task_cb retriggers GOALPT mode
+  task_cb_str("GOALPT");
 
   //status_.mode = plan_status::MODE::GOALPT;
   //timerReplan_.setPeriod(ros::Duration(0.2), false); // don't reset the timer because the goal could be coming in at high frequency
@@ -1272,6 +1291,18 @@ void scan_plan::publish_plan_mode()
 
   else if(status_.mode == plan_status::MODE::REPORT)
     planModeMsg.data = "Going home";
+
+  else if(status_.mode == plan_status::MODE::UNSTUCK)
+    planModeMsg.data = "Unstucking vehicle";
+
+  else if(status_.mode == plan_status::MODE::MOVEANDREPLAN)
+    planModeMsg.data = "Moving and replanning";
+  
+  else if(status_.mode == plan_status::MODE::GOALPT)
+    planModeMsg.data = "Going to gui goal point";
+
+  else
+    planModeMsg.data = "Unknown mode";
 }
 
 // ***************************************************************************
