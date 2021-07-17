@@ -661,8 +661,14 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
 
   std::cout << "Number of path rows before validation: " << minCstPath_.rows() << std::endl;
   bool isPathValid = true;
+
+  bool esdfUnknownAsOccupied = octMan_->get_esdf_unknown_as_occupied(); 
+  octMan_->set_esdf_unknown_as_occupied(false); // treat path as collision-free where esdf doesn't exist
+
   if( status_.mode != plan_status::MODE::MOVEANDREPLAN )
    isPathValid = pathMan_->validate_path_without_mod(minCstPath_, robPos+localBndsDynMin_, robPos+localBndsDynMax_);
+
+  octMan_->set_esdf_unknown_as_occupied(esdfUnknownAsOccupied);
 
   std::cout << "Number of path rows after validation: " << minCstPath_.rows() << std::endl;
 
@@ -679,8 +685,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
     minCstPath_ = Eigen::MatrixXd(0,3); // TODO: the clipped path can be clipped behind the vehicle causing the vehicle to go back which needs to be fixed to take this statement out
     std::cout << "Updating graph occupancy (all)" << std::endl;
 
-    bool esdfUnknownAsOccupied = octMan_->get_esdf_unknown_as_occupied();
-    octMan_->set_esdf_unknown_as_occupied(false); // to validate path and graph, relax the condition cz path and graph are not built in unknown areas at the strictest
+    esdfUnknownAsOccupied = octMan_->get_esdf_unknown_as_occupied();
+    octMan_->set_esdf_unknown_as_occupied(false); // treat graph as collision-free where esdf doesn't exist
 
     graph_-> update_occupancy(localBndsDynMin_+robPos, localBndsDynMax_+robPos, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
 
