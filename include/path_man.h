@@ -20,6 +20,7 @@ private:
 public:
   path_man(const double&, octomap_man*);
   bool validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd);
+  bool validate_path_without_mod(const Eigen::MatrixXd& path, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd);
   bool path_len_check(const Eigen::MatrixXd& path);
 
 

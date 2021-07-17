@@ -55,7 +55,6 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc, bool i
 
   // TODO: Consider using manhattan distance as the edge cost to speed up 
   bool success = false;
-  bool vertexPresent = false;
 
   std::pair<VertexIterator, VertexIterator> vertItr = vertices(*adjList_);
 

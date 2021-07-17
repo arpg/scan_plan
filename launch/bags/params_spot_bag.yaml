@@ -6,8 +6,12 @@ sensor_res_horz_vert_pts: [360, 32]
 sensor_ranges: [5]
 sensor_frame_ids: [D01/horiz_ouster_sensor]
 
-min_bounds_local: [-10, -10, -2.0] # used for local path planning, should include base_link
+min_bounds_local: [-10, -10, -2.0] # used for local rrt path planning, should include base_link
 max_bounds_local: [10, 10, 2.0]
+
+min_bounds_local_dyn: [-1.5, -1.5, -1.5] # used for dynamic obstacles, less than bounds_local cz uav esdf is bounded by that
+max_bounds_local_dyn: [1.5, 1.5, 1.5]
+
 n_rrt_nodes: 300
 near_radius_rrt: 2.0
 delta_distance_rrt: 0.5
@@ -15,13 +19,14 @@ n_fail_iterations_rrt: 1000
 succ_rad_rrt: 0.7
 
 nearest_radius_graph: 1.0
-near_radius_graph: 5.0 # 2 times delta_distance_rrt
+near_radius_graph: 5.0 # 2 times delta_distance_rrt, less than bounds_local cz uav esdf is bounded by that
 min_distance_between_nodes: 0.4 # less than delta_distance_rrt
 max_edges_per_vertex: 5 # only for a new vertex when added to graph
 min_vol_gain_frontier: 30.0 # calculate wisely, using discretized camera model
 home_position: [0, 0, 1.5] # should be collision-free
 min_man_dist_frontiers: 3.0
 avoid_frontier_man_radius: 3.0
+max_no_of_avoid_frontiers: 5
 #entrance_min_bnds: [0, -50, -5]
 #entrance_max_bnds: [10, 50, 30]
 #entrance_min_bnds: [0, 5, 5]
@@ -56,8 +61,8 @@ succ_rad_end_of_path: 1.5
 min_vol_gain_local_plan: 15.0
 no_of_tries_local_plan: 2
 no_of_tries_global_plan: 20
-no_of_tries_replan: 5
-no_of_tries_path_validation: 5
+no_of_tries_replan: 10 # number of replan tries before sending pose graph back and replan
+no_of_tries_path_validation: 20 # number of consecutive path invalidations to assume a dynamic obstacle
 
 
 verbose: true

@@ -420,6 +420,8 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
 
   status_.mapUpdated = true;
 
+  ROS_WARN("MAP UPDATED");
+
   //std::cout << "Checking for End-of-Path" << std::endl;
   //if( (minCstPath_.rows() > 0) && ( (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) )
   //{
@@ -632,6 +634,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
     status_.nPathInvalidations = 0;
   }
 
+  std::cout << "Number of failed replans: " << status_.nFailedReplans << std::endl;
+
   if( status_.nFailedReplans >= nTriesReplan_ ) // assuming nTriesReplan_ > 0
   {
     minCstPath_ = posHist_.topRows(posHistSize_).colwise().reverse();
@@ -649,9 +653,22 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   bool esdfUnknownAsOccupied = octMan_->get_esdf_unknown_as_occupied();
   octMan_->set_esdf_unknown_as_occupied(false); // to validate path and graph, relax the condition cz path and graph are not built in unknown areas at the strictest
 
-  // if the path is not updated, and vehicle is not following the pose graph, then validate the path
-  if( !didReplan && status_.mode != plan_status::MODE::MOVEANDREPLAN &&
-      !pathMan_->validate_path(minCstPath_, robPos+localBndsDynMin_, robPos+localBndsDynMax_) && (status_.nPathInvalidations++) >= nTriesPathValidation_ ) 
+  std::cout << "Number of path rows before validation: " << minCstPath_.rows() << std::endl;
+  bool isPathValid = true;
+  if( status_.mode != plan_status::MODE::MOVEANDREPLAN )
+   isPathValid = pathMan_->validate_path_without_mod(minCstPath_, robPos+localBndsDynMin_, robPos+localBndsDynMax_);
+
+  std::cout << "Number of path rows after validation: " << minCstPath_.rows() << std::endl;
+
+  if( isPathValid )
+    status_.nPathInvalidations = 0; // start counting again if a valid path is encountered
+  else
+    status_.nPathInvalidations++;
+
+  std::cout << "Number of path invalidations: " << status_.nPathInvalidations << std::endl;
+
+  // if the vehicle is not following the pose graph, then validate the path
+  if( status_.nPathInvalidations >= nTriesPathValidation_ ) 
   {
     minCstPath_ = Eigen::MatrixXd(0,3); // TODO: the clipped path can be clipped behind the vehicle causing the vehicle to go back which needs to be fixed to take this statement out
     std::cout << "Updating graph occupancy (all)" << std::endl;
@@ -714,10 +731,12 @@ Eigen::MatrixXd scan_plan::plan_home()
   gphVert.isFrontier = false;
   gphVert.terrain = gvert::Terrain::UNKNOWN;
 
+  ROS_WARN("Planning Home");
+
   std::cout << "Planning to graph" << std::endl;
 
   VertexDescriptor srcVertD;
-  if( !graph_->add_vertex(gphVert, srcVertD, true) ); // bool ignoreMinDistNodes = true
+  if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
     return posHist_.topRows(posHistSize_).colwise().reverse();
 
   std::cout << "Planning vertex to home vertex" << std::endl;
@@ -766,7 +785,7 @@ Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
 
   std::cout << "Planning to graph" << std::endl;
   VertexDescriptor srcVertD;
-  if( !graph_->add_vertex(gphVert, srcVertD, true) ); // bool ignoreMinDistNodes = true
+  if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
     return Eigen::MatrixXd(0,0);
 
   std::cout << "Planning from graph" << std::endl;
@@ -774,7 +793,7 @@ Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
 
   gphVert.pos = goalPtProj;
   VertexDescriptor tgtVertD;
-  if( !graph_->add_vertex(gphVert, tgtVertD, true) ); // bool ignoreMinDistNodes = true
+  if( !graph_->add_vertex(gphVert, tgtVertD, true) ) // bool ignoreMinDistNodes = true
     return Eigen::MatrixXd(0,0);
 
   octMan_->update_esdf(localBndsMin_+robPos, localBndsMax_+robPos);  // getting the esdf back around default robot position
@@ -881,7 +900,7 @@ Eigen::MatrixXd scan_plan::plan_globally()
 
   std::cout << "Planning to graph" << std::endl;
   VertexDescriptor srcVertD;
-  if( !graph_->add_vertex(gphVert, srcVertD, true) ); // bool ignoreMinDistNodes = true
+  if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
     return Eigen::MatrixXd(0,0);
 
   std::cout << "Path to graph non-empty, planning over graph" << std::endl;

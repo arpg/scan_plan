@@ -154,6 +154,14 @@ double path_man::point_to_line_dist(const Eigen::Vector3d& P, const Eigen::Vecto
 }
 
 // ***************************************************************************
+// validates path without modifying it
+bool path_man::validate_path_without_mod(const Eigen::MatrixXd& path, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd)
+{
+  Eigen::MatrixXd modPath = path;
+  return validate_path(modPath, minBnd, maxBnd);
+}
+
+// ***************************************************************************
 bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd)
 {
   // returns false if path length changes, and the modified path
@@ -161,10 +169,13 @@ bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBn
   // IMPORTANT: Requires a global map but only checks the edges which has source vertex inside the local bounds
   // Requires global map because an edge is checked all the way
 
-  if(path.rows() < 2) // path with one point is invalid, nothing to check
+  if( path.rows() == 0 )
+    return true;
+
+  if(path.rows() == 1) // path with one point is invalid, nothing to check
   {
     path.conservativeResize(0, Eigen::NoChange);
-    return true;
+    return false;
   }
 
   int pathInSz = path.rows();
