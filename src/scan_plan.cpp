@@ -118,7 +118,7 @@ void scan_plan::setup_graph()
 
   ROS_INFO("%s: Waiting for graph params ...", nh_->getNamespace().c_str());
   double graphRadNear, minVolGain, minDistNodes, minManDistFrontier, manRadAvoidFrontier;
-  int maxEdgesPerVertex;
+  int maxEdgesPerVertex, maxNAvoidFrontiers;
   std::vector<double> homePos, entranceMin, entranceMax, cGain;
  
   while(!nh_->getParam("near_radius_graph", graphRadNear));
@@ -131,13 +131,14 @@ void scan_plan::setup_graph()
   while(!nh_->getParam("entrance_max_bnds", entranceMax));
   while(!nh_->getParam("frontier_cost_gains", cGain));
   while(!nh_->getParam("avoid_frontier_man_radius", manRadAvoidFrontier));
+  while(!nh_->getParam("max_no_of_avoid_frontiers", maxNAvoidFrontiers)); // reset avoid frontier array to zero after this number, has to be atleast one for deconflict_replan
  
   ROS_INFO("%s: Setting up graph ...", nh_->getNamespace().c_str());
   homePos_(0) = homePos[0];
   homePos_(1) = homePos[1];
   homePos_(2) = homePos[2];
 
-  graph_ = new graph(homePos_, graphRadNear, minDistNodes, maxEdgesPerVertex, minVolGain, worldFrameId_, octMan_, minManDistFrontier, entranceMin, entranceMax, cGain, manRadAvoidFrontier);
+  graph_ = new graph(homePos_, graphRadNear, minDistNodes, maxEdgesPerVertex, minVolGain, worldFrameId_, octMan_, minManDistFrontier, entranceMin, entranceMax, cGain, manRadAvoidFrontier, maxNAvoidFrontiers);
 }
 
 // ***************************************************************************
@@ -350,8 +351,8 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
   }
 
   // if the robot is following unstuck path, only gui goal point can override it
-  if( status_.mode == plan_status::MODE::UNSTUCK )
-    return;
+  //if( status_.mode == plan_status::MODE::UNSTUCK )
+  //  return;
 
   if( (taskMsg.data == "report" || taskMsg.data == "Report" || taskMsg.data == "home" || taskMsg.data == "Home") && status_.mode != plan_status::MODE::REPORT )
   {
@@ -517,7 +518,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
 
   if(status_.mode == plan_status::MODE::UNSTUCK && end_of_path() )
   {
-    graph_->add_path(minCstPath_, true);  // add unstuck path to graph after robot starts moving to avoid dense graph around the stationary robot   
+    graph_->clear_avoid_frontiers();
+    graph_->add_path(minCstPath_, false);  // add unstuck path to graph after robot starts moving to avoid dense graph around the stationary robot   
 
     status_.mode = plan_status::MODE::LOCALEXP;
     Eigen::MatrixXd minCstPath = plan_locally();
@@ -1118,6 +1120,16 @@ void scan_plan::goal_cb(const geometry_msgs::PointStamped& goalMsg)
   status_.goalPt(0) = goalMsg.point.x;
   status_.goalPt(1) = goalMsg.point.y;
   status_.goalPt(2) = goalMsg.point.z;
+
+  if( status_.mode == plan_status::MODE::GOALPT )
+  { 
+    status_.mode = plan_status::MODE::LOCALEXP;
+
+    std_msgs::String strMsg;
+    strMsg.data = "guiCmd";
+
+    task_cb(strMsg);
+  }
 
   //status_.mode = plan_status::MODE::GOALPT;
   //timerReplan_.setPeriod(ros::Duration(0.2), false); // don't reset the timer because the goal could be coming in at high frequency

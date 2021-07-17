@@ -2,7 +2,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-graph::graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int maxEdgesPerVertex, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax, const std::vector<double>& cGain, const double& manDistAvoidFrontier)
+graph::graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int maxEdgesPerVertex, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax, const std::vector<double>& cGain, const double& manDistAvoidFrontier, const int& maxNAvoidFrontiers)
 {
   adjList_ = new BiDirectionalGraph;
 
@@ -23,6 +23,7 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int m
   minVolGain_ = minVolGain;
   minManDistFrontier_ = minManDistFrontier;
   manDistAvoidFrontier_ = manDistAvoidFrontier;
+  maxNAvoidFrontiers_ = maxNAvoidFrontiers;
   cGain_ = cGain;
 
   entranceMin_ = Eigen::Vector3d(entranceMin[0], entranceMin[1], entranceMin[2]);
@@ -68,7 +69,7 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc, bool i
 
     double dist = (vertIn.pos - (*adjList_)[*it].pos).squaredNorm();
 
-    if( ignoreMinDistNodes && dist < minDistNodes_ )
+    if( !ignoreMinDistNodes && dist < minDistNodes_ )
       return false; // a node already exists at the same position
 
     if( dist > pow(radNear_,2) )
@@ -536,6 +537,9 @@ Eigen::MatrixXd graph::plan_shortest_path(const VertexDescriptor& fromVertex, co
 // ***************************************************************************
 void graph::add_avoid_frontier(const Eigen::Vector3d& avoidFrontier)
 {
+  if( avoidFrontiers_.size() >= maxNAvoidFrontiers_ )
+    clear_avoid_frontiers();
+
   avoidFrontiers_.push_back(avoidFrontier);
 }
 

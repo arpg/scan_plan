@@ -81,6 +81,7 @@ private:
 
   std::forward_list<frontier> frontiers_;
   double minManDistFrontier_;
+  int maxNAvoidFrontiers_;
 
   std::string frameId_;
   VertexDescriptor homeVert_;
@@ -105,10 +106,10 @@ private:
  
 public:
   ~graph();
-  graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int maxEdgesPerVertex, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>&, const double& );
+  graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int maxEdgesPerVertex, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>&, const double&, const int& );
   
-  bool add_vertex(const gvert&, bool = true);
-  bool add_vertex(const gvert&, VertexDescriptor&, bool = true);
+  bool add_vertex(const gvert&, bool = false);
+  bool add_vertex(const gvert&, VertexDescriptor&, bool = false);
   bool u_coll(const gvert, const gvert);  
   void publish_viz(ros::Publisher&);
   void publish_frontiers(ros::Publisher&);
