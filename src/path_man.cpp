@@ -208,14 +208,14 @@ bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBn
 bool path_man::in_bounds(const Eigen::Vector3d& ptInStart, const Eigen::Vector3d& ptInEnd, const Eigen::Vector3d& minBnd, const Eigen::Vector3d& maxBnd)
 {
 
-  // if both points are inside the box, the line connecting them is inside the box
-  if( ptInStart(0) > minBnd(0) && ptInStart(0) < maxBnd(0) && 
-      ptInStart(1) > minBnd(1) && ptInStart(1) < maxBnd(1) && 
-      ptInStart(2) > minBnd(2) && ptInStart(2) < maxBnd(2) && 
+  // if one of the points is inside the box, the line connecting them is inside the box
+  if( ( ptInStart(0) > minBnd(0) && ptInStart(0) < maxBnd(0) && 
+        ptInStart(1) > minBnd(1) && ptInStart(1) < maxBnd(1) && 
+        ptInStart(2) > minBnd(2) && ptInStart(2) < maxBnd(2) ) || 
     
-      ptInEnd(0) > minBnd(0) && ptInEnd(0) < maxBnd(0) && 
-      ptInEnd(1) > minBnd(1) && ptInEnd(1) < maxBnd(1) && 
-      ptInEnd(2) > minBnd(2) && ptInEnd(2) < maxBnd(2) ) 
+      ( ptInEnd(0) > minBnd(0) && ptInEnd(0) < maxBnd(0) && 
+        ptInEnd(1) > minBnd(1) && ptInEnd(1) < maxBnd(1) && 
+        ptInEnd(2) > minBnd(2) && ptInEnd(2) < maxBnd(2) ) ) 
     return true;
 
   // Function derived from http://www.3dkingdoms.com/weekly/weekly.php?a=21

@@ -708,7 +708,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   else
   {
     std::cout << "Updating graph occupancy (occupied only)" << std::endl;
-    graph_-> update_occupancy(10*localBndsDynMin_+robPos, 10*localBndsDynMax_+robPos, true); // if path is obstacle-free update occupany of only occupied edges
+    graph_-> update_occupancy(geoFenceMin_, geoFenceMax_, true); // if path is obstacle-free update occupany of only occupied edges
 
     // only publish graph when replan happens to keep bags from going big
     std::cout << "Publishing frontiers" << std::endl; 
