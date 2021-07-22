@@ -5,9 +5,8 @@
 #include "geometry_msgs/TransformStamped.h"
 #include "geometry_msgs/Point.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
-#include "octomap.h"
-
 #include "ros/ros.h"
+#include "octomap.h"
 
 #include <eigen3/Eigen/Core>
 
