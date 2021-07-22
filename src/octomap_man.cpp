@@ -342,7 +342,7 @@ void octomap_man::update_esdf(const Eigen::Vector3d& minBnds, const Eigen::Vecto
 }
 
 // ***************************************************************************
-void octomap_man::update_octree(ocTreeT* octTree)
+void octomap_man::update_octree(OcTreeT* octTree)
 {
   delete octTree_;
   octTree_ = octTree;

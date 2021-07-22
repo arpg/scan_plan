@@ -161,7 +161,7 @@ void scan_plan::setup_octomap()
   ROS_INFO("%s: Waiting for octomap params ...", nh_->getNamespace().c_str());
 
   std::string vehicleType;
-  double maxGroundRoughness, maxRoughnessThresh, avgRoughnessThresh, maxDistEsdf, groundPlaneSearchDist, baseFrameHeightAboveGround, robWidth, robLength, successfulProjectionsPercent;
+  double maxGroundStep, maxGroundRoughnessThresh, avgGroundRoughnessThresh, maxDistEsdf, groundPlaneSearchDist, baseFrameHeightAboveGround, robWidth, robLength, successfulProjectionsPercent;
   bool esdfUnknownAsOccupied;
 
   while(!nh_->getParam("esdf_max_dist", maxDistEsdf));
@@ -173,8 +173,8 @@ void scan_plan::setup_octomap()
   while(!nh_->getParam("base_frame_height_above_ground", baseFrameHeightAboveGround));
   while(!nh_->getParam("successful_projection_percent", successfulProjectionsPercent));
   while(!nh_->getParam("max_ground_step", maxGroundStep)); // [epsilon,inf]
-  while(!nh_->getParam("max_roughness_thresh", maxRoughnessThresh));
-  while(!nh_->getParam("avg_roughness_thresh", avgRoughnessThresh));
+  while(!nh_->getParam("max_roughness_thresh", maxGroundRoughnessThresh));
+  while(!nh_->getParam("avg_roughness_thresh", avgGroundRoughnessThresh));
 
   ROS_INFO("%s: Setting up octomap manager ...", nh_->getNamespace().c_str());
 
@@ -745,7 +745,8 @@ Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
   octMan_->update_robot_pos(robPos);
 
   Eigen::Vector3d goalPtProj = goalPos;
-  if( octMan_->vehicle_type() != "air" && octMan_->cast_ray_down(goalPos, goalPtProj) != 1 )
+  double roughness;
+  if( octMan_->vehicle_type() != "air" && octMan_->cast_ray_down(goalPos, goalPtProj, roughness) != 1 )
   {
     ROS_WARN("Could not project the goal point to the ground");
     return Eigen::Vector3d(0,0);
@@ -1195,7 +1196,7 @@ double scan_plan::quat_to_yaw(geometry_msgs::Quaternion quat)
 }
 
 // ***************************************************************************
-geometry_msgs::Quaternion scan_plan<MapType>::yaw_to_quat(double yaw)
+geometry_msgs::Quaternion scan_plan::yaw_to_quat(double yaw)
 {
   tf2::Quaternion rot;
   rot.setRPY( 0, 0, yaw );
