@@ -5,10 +5,15 @@ project(scan_plan)
 # add_compile_options(-std=c++11)
 add_compile_options(-ffast-math -O3 -march=native -mfma -msse2 -mavx)
 
+OPTION(WITH_ROUGHNESS "Build with traversability info?" OFF)
+IF(WITH_ROUGHNESS)
+  add_definitions(-DWITH_ROUGHNESS)
+ENDIF()
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS
+set(PACKAGE_DEPENDENCIES
   geometry_msgs
   nav_msgs
   roscpp
@@ -18,7 +23,12 @@ find_package(catkin REQUIRED COMPONENTS
   octomap_msgs
   tf2_ros
   scan_plan_msgs
-)
+  )
+IF(WITH_ROUGHNESS)
+  set(PACKAGE_DEPENDENCIES ${PACKAGE_DEPENDENCIES} "rough_octomap")
+ENDIF()
+
+find_package(catkin REQUIRED COMPONENTS ${PACKAGE_DEPENDENCIES})
 
 find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)

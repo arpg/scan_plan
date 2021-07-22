@@ -27,7 +27,7 @@ mapping_sensor::mapping_sensor(double fovH, double fovV, double resH, double res
   populate_multiray_endpts();
 }
 // ***************************************************************************
-int mapping_sensor::n_ray_unseen_voxels(const Eigen::Vector3d& startPt, const Eigen::Vector3d& endPt, octomap::OcTree* octTree)
+int mapping_sensor::n_ray_unseen_voxels(const Eigen::Vector3d& startPt, const Eigen::Vector3d& endPt, OcTreeT* octTree)
 {
   octomap::KeyRay keyRay;
 
@@ -47,7 +47,7 @@ int mapping_sensor::n_ray_unseen_voxels(const Eigen::Vector3d& startPt, const Ei
   return nUnseenVoxels;
 }
 // ***************************************************************************
-double mapping_sensor::volumetric_gain(octomap::OcTree* octTree, const Eigen::Vector3d& basePos)
+double mapping_sensor::volumetric_gain(OcTreeT* octTree, const Eigen::Vector3d& basePos)
 {
   double volGain = 0.0;
 
@@ -64,7 +64,7 @@ double mapping_sensor::volumetric_gain(octomap::OcTree* octTree, const Eigen::Ve
 }
 
 // ***************************************************************************
-double mapping_sensor::volumetric_gain(octomap::OcTree* octTree, const geometry_msgs::TransformStamped& baseToWorld)
+double mapping_sensor::volumetric_gain(OcTreeT* octTree, const geometry_msgs::TransformStamped& baseToWorld)
 {
   double volGain = 0.0;
 

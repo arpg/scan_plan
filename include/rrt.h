@@ -10,8 +10,6 @@
 #include <chrono>
 #include "disp.h"
 
-#include "dynamicEDT3D/dynamicEDTOctomap.h"
-
 #include "ros/ros.h"
 #include "visualization_msgs/MarkerArray.h"
 #include "octomap_man.h"

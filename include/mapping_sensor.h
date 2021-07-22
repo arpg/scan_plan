@@ -5,9 +5,7 @@
 #include "geometry_msgs/TransformStamped.h"
 #include "geometry_msgs/Point.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
-
-#include "dynamicEDT3D/dynamicEDTOctomap.h"
-#include "octomap_msgs/Octomap.h"
+#include "octomap.h"
 
 #include "ros/ros.h"
 
@@ -34,9 +32,9 @@ private:
 public:
   mapping_sensor(double fovH, double fovV, double resH, double resV, double range, geometry_msgs::TransformStamped sensorToBody);
   
-  int n_ray_unseen_voxels(const Eigen::Vector3d& startPt, const Eigen::Vector3d& endPt, octomap::OcTree* octTree);
-  double volumetric_gain(octomap::OcTree* octTree, const geometry_msgs::TransformStamped& baseToWorld);
-  double volumetric_gain(octomap::OcTree* octTree, const Eigen::Vector3d& basePos);
+  int n_ray_unseen_voxels(const Eigen::Vector3d& startPt, const Eigen::Vector3d& endPt, OcTreeT* octTree);
+  double volumetric_gain(OcTreeT* octTree, const geometry_msgs::TransformStamped& baseToWorld);
+  double volumetric_gain(OcTreeT* octTree, const Eigen::Vector3d& basePos);
   Eigen::Vector3d transform_point(const Eigen::Vector3d& eigPt, const geometry_msgs::TransformStamped& transform);
   void populate_multiray_endpts();
 };

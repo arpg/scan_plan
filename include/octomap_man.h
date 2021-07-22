@@ -8,14 +8,12 @@
 #include "disp.h"
 #include "mapping_sensor.h"
 
-#include "dynamicEDT3D/dynamicEDTOctomap.h"
-
 // ***************************************************************************
 class octomap_man
 {
 
 private: 
-  octomap::OcTree* octTree_ = NULL;
+  OcTreeT* octTree_ = NULL;
   DynamicEDTOctomap* octDist_ = NULL;
 
   double maxDistEsdf_;
@@ -25,8 +23,11 @@ private:
   double robWidth_; 
   double robLength_;
 
-  double maxGroundRoughness_; // only for "ground" for now 
+  double maxGroundRoughnessThresh_; // only for "ground" for now 
+  double avgGroundRoughnessThresh_; // only for "ground" for now 
   double maxGroundStep_; // only for "ground" for now, determines the maximum step size on the ground that the robot is able to go over
+
+  double successfulProjectionsPercent_;
 
   std::string vehicleType_; // "air", "ground"
   Eigen::MatrixXd surfCoordsBase_; // list of coordinates spanning the vehicle's surface area looking from above in base frame (useful to project to ground for terrain) 
@@ -41,7 +42,7 @@ private:
  
 public:
   ~octomap_man();
-  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double robWidth, double robLength,  double maxGroundRoughness, double maxGroundStep, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double);
+  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent_, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh);
 
   double volumetric_gain(const Eigen::Vector3d&);
 
@@ -55,10 +56,10 @@ public:
 
   bool cast_pose_down(const Eigen::Vector4d&, Eigen::Vector3d& avgGroundPt);
   bool cast_pose_down(const Eigen::Vector4d&, Eigen::Vector3d& avgGroundPt, double& minElevation, double& maxElevation);
-  int cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& groundPt);
+  int cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& groundPt, double& groundRoughness);
 
   void update_esdf(const Eigen::Vector3d& minBnds, const Eigen::Vector3d& maxBnds);
-  void update_octree(octomap::OcTree* octTree);
+  void update_octree(OcTreeT* octTree);
   void update_robot_pos(const Eigen::Vector3d&);
 
   Eigen::Vector3d rotz(const Eigen::Vector3d&, const double&);

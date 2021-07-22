@@ -161,7 +161,7 @@ void scan_plan::setup_octomap()
   ROS_INFO("%s: Waiting for octomap params ...", nh_->getNamespace().c_str());
 
   std::string vehicleType;
-  double maxGroundRoughness, maxGroundStep, maxDistEsdf, groundPlaneSearchDist, baseFrameHeightAboveGround, robWidth, robLength;
+  double maxGroundRoughness, maxRoughnessThresh, avgRoughnessThresh, maxDistEsdf, groundPlaneSearchDist, baseFrameHeightAboveGround, robWidth, robLength, successfulProjectionsPercent;
   bool esdfUnknownAsOccupied;
 
   while(!nh_->getParam("esdf_max_dist", maxDistEsdf));
@@ -169,14 +169,16 @@ void scan_plan::setup_octomap()
   while(!nh_->getParam("vehicle_type", vehicleType)); // "air", "ground"
   while(!nh_->getParam("robot_width", robWidth));
   while(!nh_->getParam("robot_length", robLength));
-  while(!nh_->getParam("max_ground_roughness", maxGroundRoughness)); // [0, 180], angle from postive z
-  while(!nh_->getParam("max_ground_step", maxGroundStep)); // [epsilon,inf]
   while(!nh_->getParam("ground_plane_search_distance", groundPlaneSearchDist));
   while(!nh_->getParam("base_frame_height_above_ground", baseFrameHeightAboveGround));
-  
+  while(!nh_->getParam("successful_projection_percent", successfulProjectionsPercent));
+  while(!nh_->getParam("max_ground_step", maxGroundStep)); // [epsilon,inf]
+  while(!nh_->getParam("max_roughness_thresh", maxRoughnessThresh));
+  while(!nh_->getParam("avg_roughness_thresh", avgRoughnessThresh));
 
   ROS_INFO("%s: Setting up octomap manager ...", nh_->getNamespace().c_str());
-  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, vehicleType, robWidth, robLength, maxGroundRoughness*(pi_/180), maxGroundStep, groundPlaneSearchDist, mapSensors_, baseFrameHeightAboveGround);
+
+  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, vehicleType, robWidth, robLength, groundPlaneSearchDist, mapSensors_, baseFrameHeightAboveGround, successfulProjectionsPercent, maxGroundStep, maxGroundRoughnessThresh, avgGroundRoughnessThresh);
 }
 
 // ***************************************************************************
@@ -416,65 +418,22 @@ void scan_plan::octomap_cb(const octomap_msgs::Octomap& octmpMsg)
   //delete octTree_;
 
   octomap::AbstractOcTree* tree = octomap_msgs::msgToMap(octmpMsg);
-  octomap::OcTree* octTree = dynamic_cast<octomap::OcTree*>(tree);
+  OcTreeT* octTree = (OcTreeT*)tree;
 
   //publish_plan_mode();
 
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
-  octMan_->update_octree(octTree);
+
+  octMan_->update_octree( octTree );
 
   octMan_->update_esdf(localBndsMin_+robPos, localBndsMax_+robPos);
   octMan_->update_robot_pos(robPos);
 
   status_.mapUpdated = true;
 
-  ROS_WARN("MAP UPDATED");
-
-  //std::cout << "Checking for End-of-Path" << std::endl;
-  //if( (minCstPath_.rows() > 0) && ( (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) )
-  //{
-  //  std::cout << "End-of-Path: " << (robPos.transpose()-minCstPath_.bottomRows(1)).norm() << std::endl;
-  //  status_.mode = plan_status::MODE::LOCALEXP;
-   // timerReplan_.setPeriod(ros::Duration(0.2), true);
-  //}
-
-  //std::cout << "Validating path" << std::endl;
-  //status_.changeDetected_ = !( pathMan_->validate_path(minCstPath_) );
-  //pathMan_->publish_path(minCstPath_, worldFrameId_, pathPub_);
-  //if(status_.changeDetected_ && status_.mode != plan_status::MODE::LOCALEXP)
-  //{
-  //  status_.mode = plan_status::MODE::LOCALEXP;
-  //  timerReplan_.setPeriod(ros::Duration(0.5), true);
-  //}
-
-  //if( status_.mode == plan_status::MODE::LOCALEXP && (ros::Time::now() - status_.volExpStamp).toSec() > volGainMonitorDur_ ) 
-  //{
-    // if locally exploring, update every volGainMonitorDur_ sec and check for a drop
-
-    //double volExp = octTree->getNumLeafNodes() * pow(octmpMsg.resolution,3);
-    //std::cout << "Updating volumetric gain, locally exploring: " << (volExp - status_.volExp) << std::endl;
-
-    //if( minCstPath_.rows() > 0 && octMan_->volumetric_gain(minCstPath_.bottomRows(1).transpose()) < 5.0)
-    //{
-    //  status_.mode = plan_status::MODE::GLOBALEXP;
-    //  timerReplan_.setPeriod(ros::Duration(0.2), true);
-    //}
-
-    //update_explored_volume(volExp);
-  //}
-  //else if(status_.mode != plan_status::MODE::LOCALEXP) // if not locally exploring, update volumetric gain frequently to start monitoring when it does start locally exploring
-  //{
-   // std::cout << "Updating volumetric gain, not locally exploring" << std::endl;
-   // update_explored_volume(octTree->getNumLeafNodes() * pow(octmpMsg.resolution,3));
-  //}
-
   if( (isInitialized_ & 0x01) != 0x01 )
-  {
-    //status_.changeDetected_ = false;
-    //update_explored_volume(octTree->getNumLeafNodes() * pow(octmpMsg.resolution,3));
     isInitialized_ = isInitialized_ | 0x01;
-  }
 }
 
 // ***************************************************************************
@@ -1236,7 +1195,7 @@ double scan_plan::quat_to_yaw(geometry_msgs::Quaternion quat)
 }
 
 // ***************************************************************************
-geometry_msgs::Quaternion scan_plan::yaw_to_quat(double yaw)
+geometry_msgs::Quaternion scan_plan<MapType>::yaw_to_quat(double yaw)
 {
   tf2::Quaternion rot;
   rot.setRPY( 0, 0, yaw );
