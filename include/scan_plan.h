@@ -12,6 +12,7 @@
 #include "std_msgs/Bool.h"
 #include "std_msgs/String.h"
 #include "scan_plan_msgs/PointArrays.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 #include "boost/algorithm/string/predicate.hpp"
 
 #include "path_man.h"
@@ -52,7 +53,7 @@ private:
   ros::Subscriber posHistNeighborsSub_;
 
   ros::Publisher canPlanPub_;
-  ros::Publisher planModePub_; 
+  ros::Publisher planStatusPub_; 
   ros::Publisher pathPub_;
   ros::Publisher compTimePub_;
   ros::Publisher frontiersPub_;
@@ -65,6 +66,7 @@ private:
   std::string worldFrameId_;
 
   geometry_msgs::TransformStamped baseToWorld_;
+  geometry_msgs::TransformStamped poseHistFrameToWorld_;
 
   rrt* rrtTree_;
   octomap_man* octMan_;
@@ -95,7 +97,7 @@ private:
   Eigen::Vector3d entranceMin_;
   Eigen::Vector3d entranceMax_;
 
-  Eigen::MatrixXd minCstPath_;
+  Eigen::MatrixXd minCstPath_ = Eigen::MatrixXd(0,0);
 
   const double pi_ = acos(-1);
 
@@ -152,7 +154,8 @@ public:
   Eigen::MatrixXd plan_home();
   bool is_entrance(const Eigen::Vector3d& ptIn);
 
-  void publish_plan_mode();
+  void publish_plan_status();
+  void publish_plan_status(const std::string&);
   void publish_can_plan(bool canPlan);
   bool end_of_path();
 

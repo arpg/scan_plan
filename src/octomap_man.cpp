@@ -1,10 +1,11 @@
 #include "octomap_man.h"
 
 // ***************************************************************************
-octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh)
+octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool useRoughness, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh)
 {
   maxDistEsdf_ = maxDistEsdf;
   esdfUnknownAsOccupied_ = esdfUnknownAsOccupied;
+  useRoughness_ = useRoughness;
   vehicleType_ = vehicleType;
   robWidth_ = robWidth;
   robLength_ = robLength;
@@ -288,7 +289,7 @@ int octomap_man::cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& gro
     #ifdef WITH_ROUGHNESS
     {
       groundRoughness = currNode->getRough();
-      if( std::isnan(groundRoughness) )
+      if( std::isnan(groundRoughness) || !useRoughness_ )
         groundRoughness = 0.0;
     }
     #else
@@ -394,6 +395,24 @@ bool octomap_man::get_esdf_unknown_as_occupied()
 void octomap_man::set_esdf_unknown_as_occupied(const bool& esdfUnkownAsOccupied)
 {
   esdfUnknownAsOccupied_ = esdfUnkownAsOccupied;
+}
+
+// ***************************************************************************
+double octomap_man::get_base_frame_height_above_ground()
+{
+  return baseFrameHeightAboveGround_;
+}
+
+// ***************************************************************************
+bool octomap_man::get_use_roughness()
+{
+  return useRoughness_;
+}
+
+// ***************************************************************************
+void octomap_man::set_use_roughness(const bool& useRoughness)
+{
+  useRoughness_ = useRoughness;
 }
 
 // ***************************************************************************

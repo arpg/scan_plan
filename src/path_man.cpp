@@ -267,6 +267,10 @@ bool path_man::are_equal(const Eigen::MatrixXd& path1, const Eigen::MatrixXd& pa
 // ***************************************************************************
 bool path_man::path_len_check(const Eigen::MatrixXd& path)
 {
+
+  if( path.rows() < 2 )
+    return false;
+
   //double pathLength = path_man::path_len(path);
   return (path_len(path) > minPathLen_);
 }

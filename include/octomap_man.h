@@ -18,6 +18,7 @@ private:
 
   double maxDistEsdf_;
   bool esdfUnknownAsOccupied_;
+  bool useRoughness_;
 
   double radRob_; // half of the maximum dimension of the robot
   double robWidth_; 
@@ -42,7 +43,7 @@ private:
  
 public:
   ~octomap_man();
-  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent_, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh);
+  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool useRoughness, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent_, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh);
 
   double volumetric_gain(const Eigen::Vector3d&);
 
@@ -69,6 +70,9 @@ public:
   std::string vehicle_type();
   void set_esdf_unknown_as_occupied(const bool& esdfUnkownAsOccupied);
   bool get_esdf_unknown_as_occupied();
+  void set_use_roughness(const bool& useRoughness);
+  bool get_use_roughness();
+  double get_base_frame_height_above_ground();
 };
 
 #endif
