@@ -99,6 +99,10 @@ double path_man::path_to_path_dist(const Eigen::MatrixXd& path1, const Eigen::Ma
 {
   // path1 : pose history path (interpolated path) 
   // path2 : candidate path
+
+  if( (path1.rows() < 1) || (path2.rows() < 1) )
+    return -1.0;
+
   double dist = 0;
   for(int i=0; i<path1.rows(); i++)
     dist += point_to_path_dist( Eigen::Vector3d(path1(i,0), path1(i,1), path1(i,2) ), path2 );
@@ -107,12 +111,33 @@ double path_man::path_to_path_dist(const Eigen::MatrixXd& path1, const Eigen::Ma
 }
 
 // ***************************************************************************
+double path_man::point_to_paths_dist(const Eigen::Vector3d& ptIn, const std::vector<Eigen::MatrixXd>& pathsIn)
+{
+  if( pathsIn.size() < 1 )
+    return -1.0;
+
+  if( pathsIn[0].rows() < 1 )
+    return -1.0;
+
+  double minDist = 0.0;
+ 
+  for( int i=0; i<pathsIn.size(); i++ )
+  {
+    double dist = point_to_path_dist(ptIn, pathsIn[i]);
+    if( (i == 0) || (dist < minDist) )
+      minDist = dist;
+  }
+
+  return minDist;
+}
+
+// ***************************************************************************
 double path_man::point_to_path_dist(const Eigen::Vector3d& ptIn, const Eigen::MatrixXd& pathIn)
 {
   // return ( pathIn.rowwise() - ptIn.transpose() ).rowwise().lpNorm<1>().minCoeff(); // minimum 1-norm distance to a path
 
   if( pathIn.rows() < 1 )
-    return 0.0;
+    return -1.0;
 
   if( pathIn.rows() == 1 )
     return (pathIn.row(0).transpose() - ptIn).norm();

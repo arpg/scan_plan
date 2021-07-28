@@ -358,6 +358,23 @@ void graph::update_frontiers_vol_gain()
 }
 
 // ***************************************************************************
+std::forward_list<frontier> graph::pull_well_separated_frontiers(const std::forward_list<frontier>& frontiersIn, const std::vector<Eigen::MatrixXd>& pathsIn)
+{
+// extract frontiers that are far from pathsIn
+  std::forward_list<frontier> frontiers;
+
+  for(frontier& front: frontiersIn)
+  {
+   double separationDist = path_man::point_to_paths_dist(get_pos(front.vertDesc), pathsIn);
+   if( (separationDist < 0.0) || (separationDist >= minRobotSeparation_) )
+     frontiers.push_front(front);
+  }
+
+  frontiers.reverse();
+  return frontiers;
+}
+
+// ***************************************************************************
 std::forward_list<frontier> graph::ignore_avoid_frontiers()
 {
   std::forward_list<frontier> frontiers;
@@ -396,7 +413,7 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
 
   int fIndx = path.rows()-1; // potential frontier index = last point on path
   Eigen::Vector3d frontPt( path(fIndx,0), path(fIndx,1), path(fIndx,2) );
-  if( containFrontier && !frontiers_.empty() && (closest_frontier_man_dist(frontPt) < minManDistFrontier_) )
+  if( containFrontier && !frontiers_.empty() && (closest_frontier_man_dist(frontPt) < minManDistFrontier_) ) // man_dist >= 0 cz frontiers_ is not empty
     return false;
   
   gvert vert;
@@ -421,9 +438,9 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
 }
 
 // ***************************************************************************
-frontier graph::closest_frontier(const Eigen::Vector3d& ptIn, double& dist) // closest frontier to the ptIn
+frontier graph::closest_frontier(const Eigen::Vector3d& ptIn, double& dist, const std::forward_list<frontier>& frontiersIn) // closest frontier to the ptIn
 {
-  if(frontiers_.empty())
+  if(frontiersIn.empty())
   {
     frontier front;
     dist = -1.0;
@@ -431,10 +448,10 @@ frontier graph::closest_frontier(const Eigen::Vector3d& ptIn, double& dist) // c
     return front;
   }  
 
-  frontier closestFront = frontiers_.front(); // pick the first frontier as the best guess
+  frontier closestFront = frontiersIn.front(); // pick the first frontier as the best guess
   double minDist = (get_pos(closestFront.vertDesc) - ptIn).lpNorm<1>();
 
-  for(frontier& front: frontiers_)
+  for(frontier& front: frontiersIn)
   {
     double manDist = (get_pos(front.vertDesc) - ptIn).lpNorm<1>();
     if( manDist < minDist )
@@ -452,7 +469,7 @@ frontier graph::closest_frontier(const Eigen::Vector3d& ptIn, double& dist) // c
 double graph::closest_frontier_man_dist(const Eigen::Vector3d& ptIn) // closest frontier to the ptIn
 {
   double dist;
-  closest_frontier(ptIn, dist);
+  closest_frontier(ptIn, dist, frontiers_);
   return dist;  
 }
 
@@ -566,14 +583,21 @@ void graph::clear_avoid_frontiers()
 }
 
 // ***************************************************************************
-Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries)
+Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries, const std::vector<Eigen::MatrixXd>& pathsIn)
 {
   std::forward_list<frontier> frontiers = ignore_avoid_frontiers();
-  if(frontiers.empty())
+  if( frontiers.empty() )
     return Eigen::MatrixXd(0,0);
 
+  if( (pathsIn.size() > 0) && (pathsIn[0].rows() > 0) )
+  {
+    std::forward_list<frontier> frontiersSeparated = pull_well_separated_frontiers(frontiers, pathsIn);
+    if( !frontiersSeparated.empty() )
+      frontiers = frontiersSeparated;
+  }
+
   double dummyDist;
-  frontier closestFrontier = closest_frontier( get_pos(fromVertex), dummyDist );
+  frontier closestFrontier = closest_frontier( get_pos(fromVertex), dummyDist, frontiers ); // dummyDist >= 0 cz frontiers is not empty
   Eigen::MatrixXd pathToClosestFrontier = plan_shortest_path(fromVertex, closestFrontier.vertDesc);
   double pathLenToClosestFrontier = path_man::path_len(pathToClosestFrontier);
 

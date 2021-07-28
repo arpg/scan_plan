@@ -736,6 +736,78 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
 }
 
 // ***************************************************************************
+Eigen::MatrixXd scan_plan::plan_exploration_path()
+{
+  ROS_WARN("%s: Planning locally", nh_->getNamespace().c_str());
+  status_.mode = plan_status::MODE::LOCALEXP;
+  Eigen::MatrixXd minCstPathLocal = plan_locally(); // does not give a path if vol gain is low, outputs path that maintain neighbor separation if one exists
+
+  if( minCstPathLocal.rows() > 0 )
+  {
+    ROS_WARN("%s: Local path found", nh_->getNamespace().c_str());
+    double separation = path_man::point_to_paths_dist(minCstPathLocal.bottomRows(1).transpose(), posHistNeighbors_);
+    if( ( separation < 0 || separation > minSeparationRobots_ ) )
+    {
+      status_.mode = plan_status::MODE::LOCALEXP;
+      return minCstPathLocal;
+    }
+    ROS_WARN("%s: No local path with enough neighbor separation", nh_->getNamespace().c_str());
+  }
+  else
+    ROS_WARN("%s: No local path with enough vol gain", nh_->getNamespace().c_str());
+
+  // either no local path with enough vol gain exists or it doesn't maintain enough separation with neigbors  
+
+  Eigen::MatrixXd minCstPathGlobal(0,0);
+  if(!graph_->is_empty_frontiers()) 
+  {
+    ROS_WARN("%s: Frontier list is not empty, planning globally", nh_->getNamespace().c_str());
+    minCstPathGlobal = plan_globally(); // vehicle already stopped for computation due to EOP
+
+    if( minCstPathGlobal.rows() > 0 )
+    {
+      ROS_WARN("%s: Global path found", nh_->getNamespace().c_str());
+      status_.mode = plan_status::MODE::GLOBALEXP;
+      double separation = path_man::point_to_paths_dist(minCstPathGlobal.bottomRows(1).transpose(), posHistNeighbors_);
+      if( ( separation < 0 || separation > minSeparationRobots_ ) )
+      {
+        status_.mode = plan_status::MODE::GLOBALEXP;
+        return minCstPathGlobal;
+      }
+      ROS_WARN("%s: No Global path with enough neighbor separation", nh_->getNamespace().c_str());
+    }
+    else
+      ROS_WARN("%s: Global path cannot be planned", nh_->getNamespace().c_str());
+
+
+   // No path with enough vol gain and enough neighbor separation exist but minCstPathLocal and minCstPathGlobal may have enough vol gain paths
+
+   if( minCstPathLocal > 0 )
+   {
+     status_.mode = plan_status::MODE::LOCALEXP;
+     return minCstPathLocal;
+   }
+
+   if( minCstPathGlobal > 0 )
+   {
+     status_.mode = plan_status::MODE::GLOBALEXP;
+     return minCstPathGlobal;
+   }
+
+   ROS_WARN("%s: Planning locally with alpha cost", nh_->getNamespace().c_str());
+   minCstPathLocal = plan_locally("alpha", nTriesLocalPlan_); // gives a path regardless of vol gain or neighbor separation
+   if(minCstPath.rows() > 0)
+   {
+     status_.mode = plan_status::MODE::LOCALEXP;
+     return minCstPathLocal;
+   }
+
+
+   status_.mode = plan_status::MODE::LOCALEXP;
+   return Eigen::MatrixXd(0,0); // giving up, nothing found
+}
+
+// ***************************************************************************
 Eigen::MatrixXd scan_plan::plan_home()
 {
   update_base_to_world();
@@ -942,8 +1014,14 @@ Eigen::MatrixXd scan_plan::plan_locally()
   std::cout << "Planning with alpha cost, no of tries: " << nTriesLocalPlan_ << std::endl;
   minCstPath = plan_locally("alpha", nTriesLocalPlan_);
 
-  if( minCstPath.rows() > 0 && octMan_->volumetric_gain(minCstPath.bottomRows(1).transpose()) >= minVolGainLocalPlan_ ) // if alpha path has enough vol gain, return it
-    return minCstPath;
+  if( minCstPath.rows() > 0 )
+  {
+    double separationDist = path_man::point_to_paths_dist(minCstPath.bottomRows(1).transpose(), posHistNeighbors_);
+    double volGain = octMan_->volumetric_gain(minCstPath.bottomRows(1).transpose());
+
+    if( (volGain >= minVolGainLocalPlan_) && (separationDist < 0 || separationDist >= minSeparationRobots_) ) // if alpha path has enough vol gain and separation, return it
+      return minCstPath;
+  }
 
   // if no path is found or the path found does not have enough vol gain, continue to using beta cost
   std::cout << "Not enough vol gain planning with beta cost, no of tries: " << nTriesLocalPlan_ << std::endl;
@@ -999,8 +1077,8 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
   // get_path function in rrt can be used to get paths for a leaf id
 
   Eigen::MatrixXd minCstPath(0,0);
+  int idPathLeaf = -1;
   std::vector<int> idLeaves;
-  int idPathLeaf;
 
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
@@ -1014,23 +1092,24 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
   // get all paths ending at leaves and choose one with min cost
   double currRobYaw = quat_to_yaw(baseToWorld_.transform.rotation);
   std::pair<double, double> currExpYawHeight = path_man::mean_heading_height(posHist_.topRows(posHistSize_), nHistPosesExpDir_); ////////
-
-  idPathLeaf = -1;
-  double minCst = 100000;
   
-  if(costType == "alpha")
+  if(costType == "alpha") // maintain exploration heading and height
   {
+    double minCst = -1;
+
     for(int i=0; i<idLeaves.size(); i++)
     {
       Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
       if(!pathMan_->path_len_check(path) || path.rows() < 1) // minimum path length condition
         continue;
-      if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) ) // avoid pos condition
+      if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) ) // avoid blacklisted frontiers
+        continue;
+      if( !graph_->is_entrance(path.bottomRows(1).transpose()) ) // avoid entrance
         continue;
 
       double pathCst = path_cost_alpha(path, std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight));
 
-      if( minCst > pathCst && !graph_->is_entrance(path.bottomRows(1).transpose()) ) // minimum path length condition
+      if( (minCst < 0) || (minCst > pathCst) ) // minimum path length condition
       {
         minCst = pathCst;
         minCstPath = path;
@@ -1038,7 +1117,50 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
       }
     } 
   }
-  else if(costType == "beta")
+  else if(costType == "beta") // maintain exploration and height but ignore low vol gain frontier
+  {
+    double minCst = -1;
+    bool foundWellSeparatedPath = false;
+
+    for(int i=0; i<idLeaves.size(); i++)
+    {
+      Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
+      if(!pathMan_->path_len_check(path) || path.rows() < 1) // minimum path length condition
+        continue;
+      if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) ) // avoid blacklisted frontiers
+        continue;
+      if( !graph_->is_entrance(path.bottomRows(1).transpose()) ) // avoid entrance
+        continue;
+
+      double volGain;
+      double pathCst = path_cost_beta(path, std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), volGain);
+
+      double separationDist = path_man::point_to_paths_dist(path.bottomRows(1).transpose(), posHistNeighbors_);
+      bool isWellSeparatedPath = ( (separationDist < 0.0) || (separationDist >= minRobotSeparation_) ); // 
+
+      if( !foundWellSeparatedPath && isWellSeparatedPath ) // if this is the first well-separated path, mark it minCst
+      {
+        minCst = pathCst;
+        minCstPath = path;
+        idPathLeaf = idLeaves[i];
+
+        foundWellSeparatedPath = true;
+        continue;
+      }
+
+      if( foundWellSeparatedPath && !isWellSeparatedPath ) // if we have a well-separated path, reject the future ones that are not
+        continue;
+ 
+      // skip paths with low vol gain
+      if( (minCst < 0) || (volGain >= minVolGainLocalPlan_ &&  minCst > pathCst) ) 
+      {
+        minCst = pathCst;
+        minCstPath = path;
+        idPathLeaf = idLeaves[i];
+      }
+    }
+  }
+  else if(costType == "random") // random path
   {
     for(int i=0; i<idLeaves.size(); i++)
     {
@@ -1047,40 +1169,21 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
         continue;
       if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) ) // avoid pos condition
         continue;
-
-      double volGain;
-      double pathCst = path_cost_beta(path, std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), volGain);
-
-      // skip paths with low vol gain
-      if( volGain >= minVolGainLocalPlan_ &&  minCst > pathCst && !graph_->is_entrance(path.bottomRows(1).transpose()) ) 
-      {
-        minCst = pathCst;
-        minCstPath = path;
-        idPathLeaf = idLeaves[i];
-      }
-    }
-  }
-  else if(costType == "random")
-  {
-    for(int i=0; i<idLeaves.size(); i++)
-    {
-      Eigen::MatrixXd path = rrtTree_->get_path(idLeaves[i]);
-      if(!pathMan_->path_len_check(path) || path.rows() < 1) // minimum path length condition
-        continue;
-      if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) || graph_->is_entrance(path.bottomRows(1).transpose()) ) // avoid pos condition
+      if( graph_->is_entrance(path.bottomRows(1).transpose()) )
         continue;
 
-      minCst = 0.0;
       minCstPath = path;
       idPathLeaf = idLeaves[i];
     
       break;
     }
   }
+  else
+    ROS_ERROR("%s: Unknown tree propagation mode", nh_->getNamespace.c_str());
 
   //std::cout << std::endl;
 
-  if( minCstPath.rows() > 1 && addToGraph)
+  if( minCstPath.rows() > 1 && idPathLeaf > 0 && addToGraph) // second condition is redundant with first one
   {
     std::cout << "Adding paths to the graph" << std::endl;
     bool success = add_paths_to_graph(rrtTree_, idLeaves, idPathLeaf, graph_);
@@ -1104,6 +1207,19 @@ double scan_plan::path_cost_alpha(const Eigen::MatrixXd& path, const double& cur
 
 // ***************************************************************************
 double scan_plan::path_cost_beta(const Eigen::MatrixXd& path, const double& currExpYaw, const double& currExpHeight, double& volGain)
+{
+  // assumes path to have atleast one vertex, ideally more than one
+
+  std::pair<double, double> pathYawHeightErr = path_man::mean_heading_height_err(currExpYaw, currExpHeight, path);
+  volGain = octMan_->volumetric_gain( path.bottomRows(1).transpose() );
+
+  return cGain_[3] * ( -1 * volGain ); // volumetric gain at the end of the path
+         + cGain_[1] * std::get<0>(pathYawHeightErr) // distance between the pose history and candidate path headings
+         + cGain_[2] * std::get<1>(pathYawHeightErr); // distance between the pose history and candidate path heights
+}
+
+// ***************************************************************************
+double scan_plan::path_cost_separation(const Eigen::MatrixXd& path, const double& currExpYaw, const double& currExpHeight, double& volGain, double& separation)
 {
   // assumes path to have atleast one vertex, ideally more than one
 
