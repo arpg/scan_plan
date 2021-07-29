@@ -2,7 +2,7 @@
 #include "rrt.h"
 
 // ***************************************************************************
-graph::graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int maxEdgesPerVertex, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax, const std::vector<double>& cGain, const double& manDistAvoidFrontier, const int& maxNAvoidFrontiers)
+graph::graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int maxEdgesPerVertex, double minVolGain, std::string frameId, octomap_man* octMan, double minManDistFrontier, const std::vector<double>& entranceMin, const std::vector<double>& entranceMax, const std::vector<double>& cGain, const double& manDistAvoidFrontier, const int& maxNAvoidFrontiers, const double& minSeparationRobots)
 {
   adjList_ = new BiDirectionalGraph;
 
@@ -24,6 +24,7 @@ graph::graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int m
   minManDistFrontier_ = minManDistFrontier;
   manDistAvoidFrontier_ = manDistAvoidFrontier;
   maxNAvoidFrontiers_ = maxNAvoidFrontiers;
+  minSeparationRobots_ = minSeparationRobots;
   cGain_ = cGain;
 
   entranceMin_ = Eigen::Vector3d(entranceMin[0], entranceMin[1], entranceMin[2]);
@@ -358,7 +359,7 @@ void graph::update_frontiers_vol_gain()
 }
 
 // ***************************************************************************
-std::forward_list<frontier> graph::pull_well_separated_frontiers(const std::forward_list<frontier>& frontiersIn, const std::vector<Eigen::MatrixXd>& pathsIn)
+std::forward_list<frontier> graph::pull_well_separated_frontiers(std::forward_list<frontier> frontiersIn, const std::vector<Eigen::MatrixXd>& pathsIn)
 {
 // extract frontiers that are far from pathsIn
   std::forward_list<frontier> frontiers;
@@ -366,7 +367,7 @@ std::forward_list<frontier> graph::pull_well_separated_frontiers(const std::forw
   for(frontier& front: frontiersIn)
   {
    double separationDist = path_man::point_to_paths_dist(get_pos(front.vertDesc), pathsIn);
-   if( (separationDist < 0.0) || (separationDist >= minRobotSeparation_) )
+   if( (separationDist < 0.0) || (separationDist >= minSeparationRobots_) )
      frontiers.push_front(front);
   }
 
@@ -438,7 +439,7 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
 }
 
 // ***************************************************************************
-frontier graph::closest_frontier(const Eigen::Vector3d& ptIn, double& dist, const std::forward_list<frontier>& frontiersIn) // closest frontier to the ptIn
+frontier graph::closest_frontier(const Eigen::Vector3d& ptIn, double& dist, std::forward_list<frontier> frontiersIn) // closest frontier to the ptIn
 {
   if(frontiersIn.empty())
   {
@@ -699,6 +700,13 @@ void graph::set_min_dist_nodes(const double& dist)
 {
   minDistNodes_ = dist;
 }
+
+// ***************************************************************************
+double graph::get_min_separation_robots()
+{
+  return minSeparationRobots_;
+}
+
 
 // ***************************************************************************
 double graph::volumetric_gain(Eigen::Vector3d ptIn, octomap::OcTree* octTree, double sensRange) // stale function

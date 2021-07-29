@@ -82,6 +82,7 @@ private:
   std::forward_list<frontier> frontiers_;
   double minManDistFrontier_;
   int maxNAvoidFrontiers_;
+  double minSeparationRobots_;
 
   std::string frameId_;
   VertexDescriptor homeVert_;
@@ -106,7 +107,7 @@ private:
  
 public:
   ~graph();
-  graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int maxEdgesPerVertex, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>&, const double&, const int& );
+  graph(Eigen::Vector3d posRoot, double radNear, double minDistNodes, int maxEdgesPerVertex, double minVolGain, std::string frameId, octomap_man* octMan, double, const std::vector<double>&, const std::vector<double>&, const std::vector<double>&, const double&, const int&, const double& minSeparationRobots );
   
   bool add_vertex(const gvert&, bool = false);
   bool add_vertex(const gvert&, VertexDescriptor&, bool = false);
@@ -143,10 +144,13 @@ public:
   void update_occupancy(const Eigen::Vector3d& minPt, const Eigen::Vector3d& maxPt, const bool& occupiedOnly);
   Eigen::Vector3d get_src_pos(const EdgeDescriptor& edgeD);
   Eigen::Vector3d get_tgt_pos(const EdgeDescriptor& edgeD);
-  frontier closest_frontier(const Eigen::Vector3d& ptIn, double& dist);
-  Eigen::MatrixXd plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries);
+  frontier closest_frontier(const Eigen::Vector3d& ptIn, double& dist, std::forward_list<frontier> frontiersIn);
+  Eigen::MatrixXd plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries, const std::vector<Eigen::MatrixXd>& pathsIn);
+
+  std::forward_list<frontier> pull_well_separated_frontiers(std::forward_list<frontier> frontiersIn, const std::vector<Eigen::MatrixXd>& pathsIn);
 
   void set_min_dist_nodes(const double&);
+  double get_min_separation_robots();
 };
 
 // ***************************************************************************

@@ -117,7 +117,7 @@ void scan_plan::setup_graph()
   // prereqs setup_pose, setup_octomap
 
   ROS_INFO("%s: Waiting for graph params ...", nh_->getNamespace().c_str());
-  double graphRadNear, minVolGain, minDistNodes, minManDistFrontier, manRadAvoidFrontier;
+  double graphRadNear, minVolGain, minDistNodes, minManDistFrontier, manRadAvoidFrontier, minSeparationRobots;
   int maxEdgesPerVertex, maxNAvoidFrontiers;
   std::vector<double> homePos, entranceMin, entranceMax, cGain;
  
@@ -132,13 +132,14 @@ void scan_plan::setup_graph()
   while(!nh_->getParam("frontier_cost_gains", cGain));
   while(!nh_->getParam("avoid_frontier_man_radius", manRadAvoidFrontier));
   while(!nh_->getParam("max_no_of_avoid_frontiers", maxNAvoidFrontiers)); // reset avoid frontier array to zero after this number, has to be atleast one for deconflict_replan
+  while(!nh_->getParam("min_separation_robots", minSeparationRobots));
  
   ROS_INFO("%s: Setting up graph ...", nh_->getNamespace().c_str());
   homePos_(0) = homePos[0];
   homePos_(1) = homePos[1];
   homePos_(2) = homePos[2];
 
-  graph_ = new graph(homePos_, graphRadNear, minDistNodes, maxEdgesPerVertex, minVolGain, worldFrameId_, octMan_, minManDistFrontier, entranceMin, entranceMax, cGain, manRadAvoidFrontier, maxNAvoidFrontiers);
+  graph_ = new graph(homePos_, graphRadNear, minDistNodes, maxEdgesPerVertex, minVolGain, worldFrameId_, octMan_, minManDistFrontier, entranceMin, entranceMax, cGain, manRadAvoidFrontier, maxNAvoidFrontiers, minSeparationRobots);
 }
 
 // ***************************************************************************
@@ -293,43 +294,23 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
       return;
     }
 
+    if( (status_.mode != plan_status::MODE::LOCALEXP) && (status_.mode != plan_status::MODE::GLOBALEXP) )
+    {
+      publish_can_plan(false);
+      return;
+    }
+
     ROS_WARN("%s: Deconflict replan triggered", nh_->getNamespace().c_str());
     path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for safety
 
     Eigen::Vector3d avoidPos = minCstPath_.bottomRows(1).transpose();
     graph_->add_avoid_frontier(avoidPos); // temporarily avoid the end position, clear avoidPos array at exit
 
-    if( status_.mode == plan_status::MODE::GLOBALEXP )
+    Eigen::MatrixXd minCstPath = plan_exploration_path();
+    if( minCstPath.rows() > 0 )
     {
-      ROS_WARN("%s: Replanning globally", nh_->getNamespace().c_str());
-      Eigen::MatrixXd minCstPath = plan_globally(); 
-      if(minCstPath.rows() > 0) // global path found
-      {
-        publish_can_plan(true);
-        ROS_WARN("%s: Global path found", nh_->getNamespace().c_str());
-        status_.mode = plan_status::MODE::GLOBALEXP;
-        minCstPath_ = minCstPath;
-      }
-      else
-      {
-        publish_can_plan(false);
-        ROS_WARN("%s: Global path not found", nh_->getNamespace().c_str());
-        status_.mode = plan_status::MODE::LOCALEXP;
-      }
-    }
-    else if( status_.mode == plan_status::MODE::LOCALEXP )
-    {
-      ROS_WARN("%s: Replanning locally", nh_->getNamespace().c_str());
-      Eigen::MatrixXd minCstPath = plan_locally(); 
-      if(minCstPath.rows() > 0) // local path found
-      {
-        publish_can_plan(true);
-        ROS_WARN("%s: Local path found", nh_->getNamespace().c_str());
-        status_.mode = plan_status::MODE::LOCALEXP;
-        minCstPath_ = minCstPath;
-      }
-      else
-        publish_can_plan(false);
+      minCstPath_ = minCstPath;
+      publish_can_plan(true);
     }
     else
       publish_can_plan(false);
@@ -350,13 +331,17 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
 
     if(minCstPath.rows() > 0)
     {
-      status_.mode = plan_status::MODE::UNSTUCK;
+      status_.mode = plan_status::MODE::UNSTUCK; // only turn to unstuck mode if you have a path
       minCstPath_ = minCstPath;
-      path_man::publish_path(minCstPath_, worldFrameId_, pathPub_); // publish path if found, otherwise keep empty path
       publish_can_plan(true);
     }
     else
+    {
+      minCstPath_ = Eigen::MatrixXd(0,0);
       publish_can_plan(false);
+    }
+
+    path_man::publish_path(minCstPath_, worldFrameId_, pathPub_); // publish path if found, otherwise keep path empty to trigger eop of the current task
 
     return;
   }
@@ -408,19 +393,19 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
   {
     publish_plan_status("Explore request received");
 
-    status_.mode = plan_status::MODE::LOCALEXP;
-    Eigen::MatrixXd minCstPath = plan_locally();
+    Eigen::MatrixXd minCstPath = plan_exploration_path();
 
     if(minCstPath.rows() > 0)  // if local path is found publish it, otherwise leave in local exp mode so the timer retries and figures it out
     {
       minCstPath_ = minCstPath;
-      path_man::publish_path(minCstPath_, worldFrameId_, pathPub_);
     }
     else
     {
       minCstPath_ = Eigen::MatrixXd(0,0); // because timer retries at the end-of-task triggered by the end-of-path
-      path_man::publish_empty_path(worldFrameId_, pathPub_); 
     }
+
+    path_man::publish_path(minCstPath_, worldFrameId_, pathPub_); // publish path if found, otherwise empty path 
+
     return;
   }
 }
@@ -502,39 +487,34 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   if(status_.mode == plan_status::MODE::UNSTUCK && end_of_path() )
   {
     graph_->clear_avoid_frontiers();
-    graph_->add_path(minCstPath_, false);  // add unstuck path to graph after robot starts moving to avoid dense graph around the stationary robot   
+    if(minCstPath_.rows() > 0) graph_->add_path(minCstPath_, false);  // add unstuck path to graph after robot starts moving to avoid dense graph around the stationary robot   
 
-    status_.mode = plan_status::MODE::LOCALEXP;
-    Eigen::MatrixXd minCstPath = plan_locally();
-    if(minCstPath.rows() > 0) // local path found
+    Eigen::MatrixXd minCstPath = plan_exploration_path(); // vehicle already stopped for computation due to EOP
+    if(minCstPath.rows() > 0) // exploration path found
+    {
+      ROS_WARN("%s: Exploration path found", nh_->getNamespace().c_str());
       minCstPath_ = minCstPath;
+    }
   }
   else if(status_.mode == plan_status::MODE::REPORT && end_of_path())
   {
-    ROS_WARN("%s: Report mode end-of-path, planning globally", nh_->getNamespace().c_str());
-    Eigen::MatrixXd minCstPath = plan_globally(); // vehicle already stopped for computation due to EOP
-    if(minCstPath.rows() > 0) // global path found
+    ROS_WARN("%s: Report mode end-of-path, planning exploration path", nh_->getNamespace().c_str());
+    Eigen::MatrixXd minCstPath = plan_exploration_path(); // vehicle already stopped for computation due to EOP
+    if(minCstPath.rows() > 0) // exploration path found
     {
-      ROS_WARN("%s: Global path found", nh_->getNamespace().c_str());
-      status_.mode = plan_status::MODE::GLOBALEXP;
+      ROS_WARN("%s: Exploration path found", nh_->getNamespace().c_str());
       minCstPath_ = minCstPath;
-    }
-    else
-    {
-      ROS_WARN("%s: Global path not found, planning locally", nh_->getNamespace().c_str());
-      status_.mode = plan_status::MODE::LOCALEXP;
-      Eigen::MatrixXd minCstPath = plan_locally(); 
-      if(minCstPath.rows() > 0) // local path found
-        minCstPath_ = minCstPath;
     }
   }
   else if(status_.mode == plan_status::MODE::GOALPT && end_of_path())
   {
-    ROS_WARN("%s: Goal point mode end-of-path, planning locally", nh_->getNamespace().c_str());
-    status_.mode = plan_status::MODE::LOCALEXP;
-    Eigen::MatrixXd minCstPath = plan_locally();
-    if(minCstPath.rows() > 0) // local path found
+    ROS_WARN("%s: Goal point mode end-of-path, planning exploration path", nh_->getNamespace().c_str());
+    Eigen::MatrixXd minCstPath = plan_exploration_path(); // vehicle already stopped for computation due to EOP
+    if(minCstPath.rows() > 0) // exploration path found
+    {
+      ROS_WARN("%s: Exploration path found", nh_->getNamespace().c_str());
       minCstPath_ = minCstPath;
+    }
   }
   else if(status_.mode == plan_status::MODE::GLOBALEXP && end_of_path())
   {
@@ -545,56 +525,22 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
     if( minCstPath_.rows() > 0 && (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) // if reached frontier force remove it
       graph_->remove_frontier(minCstPath_.bottomRows(1).transpose());
 
-    ROS_WARN("%s: Global exp mode end-of-path, planning locally", nh_->getNamespace().c_str());
-    status_.mode = plan_status::MODE::LOCALEXP;
-    Eigen::MatrixXd minCstPath = plan_locally();
-    if(minCstPath.rows() > 0) // local path found
+    ROS_WARN("%s: Global exp mode end-of-path, planning exploration path", nh_->getNamespace().c_str());
+    Eigen::MatrixXd minCstPath = plan_exploration_path(); // vehicle already stopped for computation due to EOP
+    if(minCstPath.rows() > 0) // exploration path found
+    {
+      ROS_WARN("%s: Exploration path found", nh_->getNamespace().c_str());
       minCstPath_ = minCstPath;
+    }
   }
   else if( (status_.mode == plan_status::MODE::LOCALEXP) && end_of_path())
   {
-    ROS_WARN("%s: Local exp mode end-of-path, planning locally", nh_->getNamespace().c_str());
-    status_.mode = plan_status::MODE::LOCALEXP;
-    Eigen::MatrixXd minCstPath = plan_locally(); // does not give a path if vol gain is low
-
-    if(minCstPath.rows() > 0)
+    ROS_WARN("%s: Local exp mode end-of-path, planning exploration path", nh_->getNamespace().c_str());
+    Eigen::MatrixXd minCstPath = plan_exploration_path(); // vehicle already stopped for computation due to EOP
+    if(minCstPath.rows() > 0) // exploration path found
+    {
+      ROS_WARN("%s: Exploration path found", nh_->getNamespace().c_str());
       minCstPath_ = minCstPath;
-
-    else if(minCstPath.rows() < 1 && !graph_->is_empty_frontiers()) // no local path with good enough vol gain is found and frontier list is not empty
-    {
-      ROS_WARN("%s: No local path with enough vol gain, frontier list is not empty, planning globally", nh_->getNamespace().c_str());
-      Eigen::MatrixXd minCstPath = plan_globally(); // vehicle already stopped for computation due to EOP
-      if(minCstPath.rows() > 0) // global path found
-      {
-        ROS_WARN("%s: Global path found", nh_->getNamespace().c_str());
-        status_.mode = plan_status::MODE::GLOBALEXP;
-        minCstPath_ = minCstPath;
-      }
-      else
-      {
-        ROS_WARN("%s: Global path cannot be planned, planning locally with alpha cost", nh_->getNamespace().c_str());
-        minCstPath = plan_locally("alpha", nTriesLocalPlan_); // gives a path regardless of vol gain
-        if(minCstPath.rows() > 0)
-          minCstPath_ = minCstPath;
-        else
-        {
-          //minCstPath_ = posHist_.topRows(posHistSize_).colwise().reverse();
-          //status_.mode = plan_status::MODE::MOVEANDREPLAN;
-        }
-      }
-    }
-
-    else // no local path with good enough vol gain is found and frontier list is empty
-    {
-      ROS_WARN("%s: No local path with enough vol gain, frontier list is empty, planning locally with alpha cost", nh_->getNamespace().c_str());
-      minCstPath = plan_locally("alpha", nTriesLocalPlan_); // gives a path regardless of vol gain
-      if(minCstPath.rows() > 0)
-        minCstPath_ = minCstPath;
-      else
-      {
-        //minCstPath_ = posHist_.topRows(posHistSize_).colwise().reverse();
-       // status_.mode = plan_status::MODE::MOVEANDREPLAN;
-      }
     }
   }
   else if( (status_.mode == plan_status::MODE::MOVEANDREPLAN) ) // buggy perception/map
@@ -746,7 +692,7 @@ Eigen::MatrixXd scan_plan::plan_exploration_path()
   {
     ROS_WARN("%s: Local path found", nh_->getNamespace().c_str());
     double separation = path_man::point_to_paths_dist(minCstPathLocal.bottomRows(1).transpose(), posHistNeighbors_);
-    if( ( separation < 0 || separation > minSeparationRobots_ ) )
+    if( ( separation < 0 || separation >= graph_->get_min_separation_robots() ) )
     {
       status_.mode = plan_status::MODE::LOCALEXP;
       return minCstPathLocal;
@@ -767,9 +713,8 @@ Eigen::MatrixXd scan_plan::plan_exploration_path()
     if( minCstPathGlobal.rows() > 0 )
     {
       ROS_WARN("%s: Global path found", nh_->getNamespace().c_str());
-      status_.mode = plan_status::MODE::GLOBALEXP;
       double separation = path_man::point_to_paths_dist(minCstPathGlobal.bottomRows(1).transpose(), posHistNeighbors_);
-      if( ( separation < 0 || separation > minSeparationRobots_ ) )
+      if( ( separation < 0 || separation >= graph_->get_min_separation_robots() ) )
       {
         status_.mode = plan_status::MODE::GLOBALEXP;
         return minCstPathGlobal;
@@ -778,17 +723,18 @@ Eigen::MatrixXd scan_plan::plan_exploration_path()
     }
     else
       ROS_WARN("%s: Global path cannot be planned", nh_->getNamespace().c_str());
+  }
 
 
    // No path with enough vol gain and enough neighbor separation exist but minCstPathLocal and minCstPathGlobal may have enough vol gain paths
 
-   if( minCstPathLocal > 0 )
+   if( minCstPathLocal.rows() > 0 )
    {
      status_.mode = plan_status::MODE::LOCALEXP;
      return minCstPathLocal;
    }
 
-   if( minCstPathGlobal > 0 )
+   if( minCstPathGlobal.rows() > 0 )
    {
      status_.mode = plan_status::MODE::GLOBALEXP;
      return minCstPathGlobal;
@@ -796,7 +742,7 @@ Eigen::MatrixXd scan_plan::plan_exploration_path()
 
    ROS_WARN("%s: Planning locally with alpha cost", nh_->getNamespace().c_str());
    minCstPathLocal = plan_locally("alpha", nTriesLocalPlan_); // gives a path regardless of vol gain or neighbor separation
-   if(minCstPath.rows() > 0)
+   if(minCstPathLocal.rows() > 0)
    {
      status_.mode = plan_status::MODE::LOCALEXP;
      return minCstPathLocal;
@@ -997,7 +943,7 @@ Eigen::MatrixXd scan_plan::plan_globally()
     return Eigen::MatrixXd(0,0);
 
   std::cout << "Path to graph non-empty, planning over graph" << std::endl;
-  Eigen::MatrixXd minCstPath = graph_->plan_to_frontier(srcVertD, nTriesGlobalPlan_);
+  Eigen::MatrixXd minCstPath = graph_->plan_to_frontier(srcVertD, nTriesGlobalPlan_, posHistNeighbors_);
 
   if(minCstPath.rows() < 1)
     return Eigen::MatrixXd(0,0);
@@ -1019,7 +965,7 @@ Eigen::MatrixXd scan_plan::plan_locally()
     double separationDist = path_man::point_to_paths_dist(minCstPath.bottomRows(1).transpose(), posHistNeighbors_);
     double volGain = octMan_->volumetric_gain(minCstPath.bottomRows(1).transpose());
 
-    if( (volGain >= minVolGainLocalPlan_) && (separationDist < 0 || separationDist >= minSeparationRobots_) ) // if alpha path has enough vol gain and separation, return it
+    if( (volGain >= minVolGainLocalPlan_) && (separationDist < 0 || separationDist >= graph_->get_min_separation_robots()) ) // if alpha path has enough vol gain and separation, return it
       return minCstPath;
   }
 
@@ -1136,7 +1082,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
       double pathCst = path_cost_beta(path, std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), volGain);
 
       double separationDist = path_man::point_to_paths_dist(path.bottomRows(1).transpose(), posHistNeighbors_);
-      bool isWellSeparatedPath = ( (separationDist < 0.0) || (separationDist >= minRobotSeparation_) ); // 
+      bool isWellSeparatedPath = ( (separationDist < 0.0) || (separationDist >= graph_->get_min_separation_robots()) ); // 
 
       if( !foundWellSeparatedPath && isWellSeparatedPath ) // if this is the first well-separated path, mark it minCst
       {
@@ -1179,7 +1125,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
     }
   }
   else
-    ROS_ERROR("%s: Unknown tree propagation mode", nh_->getNamespace.c_str());
+    ROS_ERROR("%s: Unknown tree propagation mode", nh_->getNamespace().c_str());
 
   //std::cout << std::endl;
 
@@ -1207,19 +1153,6 @@ double scan_plan::path_cost_alpha(const Eigen::MatrixXd& path, const double& cur
 
 // ***************************************************************************
 double scan_plan::path_cost_beta(const Eigen::MatrixXd& path, const double& currExpYaw, const double& currExpHeight, double& volGain)
-{
-  // assumes path to have atleast one vertex, ideally more than one
-
-  std::pair<double, double> pathYawHeightErr = path_man::mean_heading_height_err(currExpYaw, currExpHeight, path);
-  volGain = octMan_->volumetric_gain( path.bottomRows(1).transpose() );
-
-  return cGain_[3] * ( -1 * volGain ); // volumetric gain at the end of the path
-         + cGain_[1] * std::get<0>(pathYawHeightErr) // distance between the pose history and candidate path headings
-         + cGain_[2] * std::get<1>(pathYawHeightErr); // distance between the pose history and candidate path heights
-}
-
-// ***************************************************************************
-double scan_plan::path_cost_separation(const Eigen::MatrixXd& path, const double& currExpYaw, const double& currExpHeight, double& volGain, double& separation)
 {
   // assumes path to have atleast one vertex, ideally more than one
 

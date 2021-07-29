@@ -149,6 +149,7 @@ public:
 
   void update_explored_volume(const double& expVol);
 
+  Eigen::MatrixXd plan_exploration_path();
   Eigen::MatrixXd plan_to_point(const Eigen::Vector3d& goalPos);
   Eigen::MatrixXd plan_globally();
   Eigen::MatrixXd plan_home();
