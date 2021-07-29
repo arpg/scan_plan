@@ -51,6 +51,7 @@ private:
   ros::Subscriber goalSub_;
   ros::Subscriber taskSub_;
   ros::Subscriber posHistNeighborsSub_;
+  ros::Subscriber posHistNeighborSub_;
 
   ros::Publisher canPlanPub_;
   ros::Publisher planStatusPub_; 
@@ -140,6 +141,7 @@ public:
   bool min_path_len(Eigen::MatrixXd& path);
   void pose_hist_cb(const nav_msgs::Path& poseHistMsg);
   void pos_hist_neighbors_cb(const scan_plan_msgs::PointArrays&);
+  void pos_hist_neighbor_cb(const nav_msgs::Path&);
   void task_cb(const std_msgs::String&);
   void task_cb_str(const std::string&);
 
@@ -161,7 +163,7 @@ public:
   bool end_of_path();
 
   double path_cost_alpha(const Eigen::MatrixXd&, const double&, const double&);
-  double path_cost_beta(const Eigen::MatrixXd&, const double&, const double&, double&);
+  double path_cost_beta(const Eigen::MatrixXd&, const double&, const double&, double&, double& separationDist);
   Eigen::MatrixXd plan_locally(const std::string& costType, const int& nTries, bool = true);
   Eigen::MatrixXd plan_locally(const std::string&, bool = true);  
 

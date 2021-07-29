@@ -1,10 +1,10 @@
-base_frame_id: D01/planning_link
+base_frame_id: H01/planning_link
 world_frame_id: world
 
 sensor_fovs_horz_vert_degrees: [360, 32] # append [horz,vert] for more sensors
 sensor_res_horz_vert_pts: [360, 32]
 sensor_ranges: [5]
-sensor_frame_ids: [D01/horiz_ouster_sensor]
+sensor_frame_ids: [H01/horiz_ouster_sensor]
 
 min_bounds_local: [-10, -10, -2.0] # used for local rrt path planning, should include base_link
 max_bounds_local: [10, 10, 2.0]
@@ -27,6 +27,7 @@ home_position: [0, 0, 1.5] # should be collision-free
 min_man_dist_frontiers: 3.0
 avoid_frontier_man_radius: 3.0
 max_no_of_avoid_frontiers: 5
+min_separation_robots: 5.0
 #entrance_min_bnds: [0, -50, -5]
 #entrance_max_bnds: [10, 50, 30]
 #entrance_min_bnds: [0, 5, 5]

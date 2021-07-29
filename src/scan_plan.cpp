@@ -25,6 +25,7 @@ scan_plan::scan_plan(ros::NodeHandle* nh)
   goalSub_ = nh->subscribe("goal_in", 1, &scan_plan::goal_cb, this);
   taskSub_ = nh->subscribe("task_in", 1, &scan_plan::task_cb, this);
   posHistNeighborsSub_ = nh->subscribe("pos_hist_neighbors_in", 1, &scan_plan::pos_hist_neighbors_cb, this);
+  posHistNeighborSub_ = nh->subscribe("pos_hist_neighbor_in", 1, &scan_plan::pos_hist_neighbor_cb, this); // for one neighbor
 
   canPlanPub_ = nh->advertise<std_msgs::Bool>("can_plan_out", 10);
   planStatusPub_ = nh->advertise<std_msgs::String>("status_out", 10);
@@ -61,10 +62,10 @@ void scan_plan::setup_sensors()
   std::vector<double> fovs, res, ranges;
   std::vector<std::string> sensorFrameIds;
   
-  while(!nh_->getParam("sensor_fovs_horz_vert_degrees", fovs)); // input in degress, converted to radians
-  while(!nh_->getParam("sensor_res_horz_vert_pts", res));
-  while(!nh_->getParam("sensor_ranges", ranges));
-  while(!nh_->getParam("sensor_frame_ids", sensorFrameIds));
+  while(!nh_->getParam("sensor_frame_ids", sensorFrameIds) || sensorFrameIds.size() < 1);
+  while(!nh_->getParam("sensor_ranges", ranges) || ranges.size() != sensorFrameIds.size());
+  while(!nh_->getParam("sensor_fovs_horz_vert_degrees", fovs) || fovs.size() != 2*sensorFrameIds.size() ); // input in degress, converted to radians
+  while(!nh_->getParam("sensor_res_horz_vert_pts", res) || res.size() != 2*sensorFrameIds.size() );
 
   ROS_INFO("%s: Waiting for sensors to base transforms ...", nh_->getNamespace().c_str());
   std::vector<geometry_msgs::TransformStamped> sensorsToBase;
@@ -88,8 +89,8 @@ void scan_plan::setup_rrt()
 
   std::vector<double> minBnds, maxBnds;
   double rrtSuccRad;
-  while(!nh_->getParam("min_bounds_local", minBnds)); // [x_min, y_min, z_min]
-  while(!nh_->getParam("max_bounds_local", maxBnds)); // [x_max, y_max, z_max]
+  while(!nh_->getParam("min_bounds_local", minBnds) || minBnds.size() != 3); // [x_min, y_min, z_min]
+  while(!nh_->getParam("max_bounds_local", maxBnds) || maxBnds.size() != 3); // [x_max, y_max, z_max]
 
   localBndsMin_(0) = minBnds[0];
   localBndsMin_(1) = minBnds[1];
@@ -125,11 +126,11 @@ void scan_plan::setup_graph()
   while(!nh_->getParam("min_distance_between_nodes", minDistNodes));
   while(!nh_->getParam("max_edges_per_vertex", maxEdgesPerVertex));
   while(!nh_->getParam("min_vol_gain_frontier", minVolGain)); // used for local/global switching and removing frontiers, (m^3)
-  while(!nh_->getParam("home_position", homePos)); // must be collision-free
+  while(!nh_->getParam("home_position", homePos) || homePos.size() != 3); // must be collision-free
   while(!nh_->getParam("min_man_dist_frontiers", minManDistFrontier));
-  while(!nh_->getParam("entrance_min_bnds", entranceMin));
-  while(!nh_->getParam("entrance_max_bnds", entranceMax));
-  while(!nh_->getParam("frontier_cost_gains", cGain));
+  while(!nh_->getParam("entrance_min_bnds", entranceMin) || entranceMin.size() != 3);
+  while(!nh_->getParam("entrance_max_bnds", entranceMax) || entranceMax.size() != 3);
+  while(!nh_->getParam("frontier_cost_gains", cGain) || cGain.size() != 2);
   while(!nh_->getParam("avoid_frontier_man_radius", manRadAvoidFrontier));
   while(!nh_->getParam("max_no_of_avoid_frontiers", maxNAvoidFrontiers)); // reset avoid frontier array to zero after this number, has to be atleast one for deconflict_replan
   while(!nh_->getParam("min_separation_robots", minSeparationRobots));
@@ -204,9 +205,9 @@ void scan_plan::setup_scan_plan()
 
   std::vector<double> geoFenceMin, geoFenceMax;
 
-  while(!nh_->getParam("path_cost_gains", cGain_));
-  while(!nh_->getParam("min_bnds_geofence", geoFenceMin));
-  while(!nh_->getParam("max_bnds_geofence", geoFenceMax)); // in world frame
+  while(!nh_->getParam("path_cost_gains", cGain_) || cGain_.size() != 5);
+  while(!nh_->getParam("min_bnds_geofence", geoFenceMin) || geoFenceMin.size() != 3);
+  while(!nh_->getParam("max_bnds_geofence", geoFenceMax) || geoFenceMax.size() != 3); // in world frame
   while(!nh_->getParam("n_hist_pts_for_exploration_dir", nHistPosesExpDir_));
   while(!nh_->getParam("vol_gain_monitor_dur_mode_switch", volGainMonitorDur_));
   while(!nh_->getParam("min_vol_gain_local_plan", minVolGainLocalPlan_));
@@ -225,8 +226,8 @@ void scan_plan::setup_scan_plan()
   geoFenceMax_(2) = geoFenceMax[2];
 
   std::vector<double> minDynBnds, maxDynBnds;
-  while(!nh_->getParam("min_bounds_local_dyn", minDynBnds)); // [x_min, y_min, z_min]
-  while(!nh_->getParam("max_bounds_local_dyn", maxDynBnds)); // [x_max, y_max, z_max]
+  while(!nh_->getParam("min_bounds_local_dyn", minDynBnds) || minDynBnds.size() != 3); // [x_min, y_min, z_min]
+  while(!nh_->getParam("max_bounds_local_dyn", maxDynBnds) || maxDynBnds.size() != 3); // [x_max, y_max, z_max]
 
   localBndsDynMin_(0) = minDynBnds[0];
   localBndsDynMin_(1) = minDynBnds[1];
@@ -772,12 +773,12 @@ Eigen::MatrixXd scan_plan::plan_home()
 
   VertexDescriptor srcVertD;
   if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
-    return posHist_.topRows(posHistSize_).colwise().reverse();
+    return Eigen::MatrixXd(0,0); // posHist_.topRows(posHistSize_).colwise().reverse();
 
   std::cout << "Planning vertex to home vertex" << std::endl;
   Eigen::MatrixXd minCstPath = graph_->plan_home(srcVertD);
   if(minCstPath.rows() < 1)
-    return posHist_.topRows(posHistSize_).colwise().reverse();
+    return Eigen::MatrixXd(0,0); // posHist_.topRows(posHistSize_).colwise().reverse();
 
   return minCstPath;
 }
@@ -1041,7 +1042,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
   
   if(costType == "alpha") // maintain exploration heading and height
   {
-    double minCst = -1;
+    double minCst = std::numeric_limits<double>::max();
 
     for(int i=0; i<idLeaves.size(); i++)
     {
@@ -1050,12 +1051,12 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
         continue;
       if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) ) // avoid blacklisted frontiers
         continue;
-      if( !graph_->is_entrance(path.bottomRows(1).transpose()) ) // avoid entrance
+      if( graph_->is_entrance(path.bottomRows(1).transpose()) ) // avoid entrance
         continue;
 
       double pathCst = path_cost_alpha(path, std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight));
 
-      if( (minCst < 0) || (minCst > pathCst) ) // minimum path length condition
+      if( (minCst > pathCst) ) // minimum path length condition
       {
         minCst = pathCst;
         minCstPath = path;
@@ -1065,7 +1066,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
   }
   else if(costType == "beta") // maintain exploration and height but ignore low vol gain frontier
   {
-    double minCst = -1;
+    double minCst = std::numeric_limits<double>::max();
     bool foundWellSeparatedPath = false;
 
     for(int i=0; i<idLeaves.size(); i++)
@@ -1075,16 +1076,15 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
         continue;
       if( graph_->is_avoid_frontier(path.bottomRows(1).transpose()) ) // avoid blacklisted frontiers
         continue;
-      if( !graph_->is_entrance(path.bottomRows(1).transpose()) ) // avoid entrance
+      if( graph_->is_entrance(path.bottomRows(1).transpose()) ) // avoid entrance
         continue;
 
-      double volGain;
-      double pathCst = path_cost_beta(path, std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), volGain);
+      double volGain, separationDist;
+      double pathCst = path_cost_beta(path, std::get<0>(currExpYawHeight), std::get<1>(currExpYawHeight), volGain, separationDist);
 
-      double separationDist = path_man::point_to_paths_dist(path.bottomRows(1).transpose(), posHistNeighbors_);
       bool isWellSeparatedPath = ( (separationDist < 0.0) || (separationDist >= graph_->get_min_separation_robots()) ); // 
 
-      if( !foundWellSeparatedPath && isWellSeparatedPath ) // if this is the first well-separated path, mark it minCst
+      if( !foundWellSeparatedPath && isWellSeparatedPath && volGain >= minVolGainLocalPlan_ ) // if this is the first well-separated good vol gain path, mark it minCst
       {
         minCst = pathCst;
         minCstPath = path;
@@ -1098,7 +1098,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
         continue;
  
       // skip paths with low vol gain
-      if( (minCst < 0) || (volGain >= minVolGainLocalPlan_ &&  minCst > pathCst) ) 
+      if( (volGain >= minVolGainLocalPlan_ &&  minCst > pathCst) ) 
       {
         minCst = pathCst;
         minCstPath = path;
@@ -1129,7 +1129,7 @@ Eigen::MatrixXd scan_plan::plan_locally(const std::string& costType, bool addToG
 
   //std::cout << std::endl;
 
-  if( minCstPath.rows() > 1 && idPathLeaf > 0 && addToGraph) // second condition is redundant with first one
+  if( minCstPath.rows() > 1 && idPathLeaf >= 0 && addToGraph) // second condition is redundant with first one
   {
     std::cout << "Adding paths to the graph" << std::endl;
     bool success = add_paths_to_graph(rrtTree_, idLeaves, idPathLeaf, graph_);
@@ -1152,14 +1152,19 @@ double scan_plan::path_cost_alpha(const Eigen::MatrixXd& path, const double& cur
 }
 
 // ***************************************************************************
-double scan_plan::path_cost_beta(const Eigen::MatrixXd& path, const double& currExpYaw, const double& currExpHeight, double& volGain)
+double scan_plan::path_cost_beta(const Eigen::MatrixXd& path, const double& currExpYaw, const double& currExpHeight, double& volGain, double& separationDist)
 {
   // assumes path to have atleast one vertex, ideally more than one
 
   std::pair<double, double> pathYawHeightErr = path_man::mean_heading_height_err(currExpYaw, currExpHeight, path);
   volGain = octMan_->volumetric_gain( path.bottomRows(1).transpose() );
 
-  return cGain_[3] * ( -1 * volGain ); // volumetric gain at the end of the path
+  separationDist = path_man::point_to_paths_dist( path.bottomRows(1).transpose(), posHistNeighbors_ );
+  if( separationDist < 0.0 ) 
+    cGain_[4] = 0.0; // ignore separation dist if posHistNeighbors_ is empty 
+
+  return   cGain_[4] * (-1 * separationDist ) // separtion distance from neighbors
+         + cGain_[3] * ( -1 * volGain ); // volumetric gain at the end of the path
          + cGain_[1] * std::get<0>(pathYawHeightErr) // distance between the pose history and candidate path headings
          + cGain_[2] * std::get<1>(pathYawHeightErr); // distance between the pose history and candidate path heights
 }
@@ -1341,6 +1346,25 @@ void scan_plan::pos_hist_neighbors_cb(const scan_plan_msgs::PointArrays& pointAr
     for( int j=0; j<posHistNeighbors_[i].rows(); j++ )
       posHistNeighbors_[i].row(j) = Eigen::Vector3d( pointArrays.arrays[i].points[j].x, pointArrays.arrays[i].points[j].y, pointArrays.arrays[i].points[j].z );
   }
+}
+
+// ***************************************************************************
+void scan_plan::pos_hist_neighbor_cb(const nav_msgs::Path& pathMsg)
+{
+  // temporary subscriber for testing with path msg type with one neighbor
+  if( pathMsg.poses.size() < 1 )
+    return;
+
+  scan_plan_msgs::PointArrays pointArraysMsg;
+  scan_plan_msgs::PointArray pointArrayMsg;
+  pointArrayMsg.points.resize(pathMsg.poses.size());
+
+  for( int i=0; i<pathMsg.poses.size(); i++ )
+    pointArrayMsg.points[i] = pathMsg.poses[i].pose.position;
+  
+  pointArraysMsg.arrays.push_back(pointArrayMsg);
+
+  pos_hist_neighbors_cb(pointArraysMsg);
 }
 
 // ***************************************************************************

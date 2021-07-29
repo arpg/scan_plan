@@ -1,4 +1,4 @@
-base_frame_id: H01/base_plan_link
+base_frame_id: H01/planning_link
 world_frame_id: world
 
 sensor_fovs_horz_vert_degrees: [360, 45] # append [horz,vert] for more sensors
@@ -22,6 +22,7 @@ min_vol_gain_frontier: 15.0 # calculate wisely, using discretized camera model
 home_position: [0, 0, 1.5] # should be collision-free
 min_man_dist_frontiers: 3.0
 avoid_frontier_man_radius: 3.0
+max_separation_robots: 5.0
 #entrance_min_bnds: [0, -50, -5]
 #entrance_max_bnds: [10, 50, 30]
 #entrance_min_bnds: [0, 5, 5]
