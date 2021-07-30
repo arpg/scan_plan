@@ -374,6 +374,30 @@ void octomap_man::create_robot_surface(const double& voxLen)
 }
 
 // ***************************************************************************
+bool octomap_man::check_for_cliff(const Eigen::Vector3d& posIn, const double& headingIn)
+{
+  Eigen::Vector3d unitVec( cos(headingIn), sin(headingIn), 0 );
+
+  int nVoxelsLookahead = ceil(robLength_ / octTree_->getResolution()); // one robot length lookahead
+
+  Eigen::Vector3d ptIn;
+  Eigen::Vector3d groundPt;
+  double groundRoughness;
+  for( int i=1; i<nVoxelsLookahead; i++ )
+  {
+    ptIn = posIn + i*octTree_->getResolution()*unitVec;
+
+    int uColl = cast_ray_down(ptIn, groundPt, groundRoughness);
+    if( uColl == -1 ) // if not projected, it is a cliff
+      return true;
+    else if( uColl == 0 ) // if under-collision, not a cliff
+      return false;
+  }
+
+  return false; // if all points are projected, not a cliff
+}
+
+// ***************************************************************************
 void octomap_man::update_robot_pos(const Eigen::Vector3d& robPos)
 {
   robPos_ = robPos;

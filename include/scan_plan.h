@@ -169,6 +169,8 @@ public:
 
   int update_local_tree(const Eigen::Vector3d&, const Eigen::Vector3d&);
   void update_local_tree(const Eigen::Vector3d&);
+
+  void stop_if_cliff_after_eop();
 };
 
 #endif

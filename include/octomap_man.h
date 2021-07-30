@@ -73,6 +73,8 @@ public:
   void set_use_roughness(const bool& useRoughness);
   bool get_use_roughness();
   double get_base_frame_height_above_ground();
+
+  bool check_for_cliff(const Eigen::Vector3d& posIn, const double& headingIn);
 };
 
 #endif

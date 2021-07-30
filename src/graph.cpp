@@ -362,16 +362,33 @@ void graph::update_frontiers_vol_gain()
 std::forward_list<frontier> graph::pull_well_separated_frontiers(std::forward_list<frontier> frontiersIn, const std::vector<Eigen::MatrixXd>& pathsIn)
 {
 // extract frontiers that are far from pathsIn
-  std::forward_list<frontier> frontiers;
 
+  if( frontiersIn.empty() ) 
+    return frontiersIn;
+
+  std::forward_list<frontier> frontiers;
+  frontier maxCstFrontier;
+
+  double maxCst = -1.0; // separation cannot be less than zero
   for(frontier& front: frontiersIn)
   {
    double separationDist = path_man::point_to_paths_dist(get_pos(front.vertDesc), pathsIn);
-   if( (separationDist < 0.0) || (separationDist >= minSeparationRobots_) )
+   if( (separationDist < 0.0) || (separationDist >= minSeparationRobots_) ) // push the well-separated ones to the list
      frontiers.push_front(front);
+   else if( separationDist > maxCst ) // from not -well-separated ones, find the one with maximum separation
+   {
+     maxCst = separationDist;
+     maxCstFrontier = front;
+   }
   }
 
-  frontiers.reverse();
+  // since frontiersIn should not be empty, frontiers or maxCstFrontier should have/be atleast one valid frontier
+  // if can't find the one with good enough distance, find the one with max distance
+
+  if( frontiers.empty() )
+    frontiers.push_front(maxCstFrontier);
+  else
+    frontiers.reverse();
   return frontiers;
 }
 

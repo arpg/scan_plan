@@ -487,6 +487,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
 
   if(status_.mode == plan_status::MODE::UNSTUCK && end_of_path() )
   {
+    stop_if_cliff_after_eop();
+
     graph_->clear_avoid_frontiers();
     if(minCstPath_.rows() > 0) graph_->add_path(minCstPath_, false);  // add unstuck path to graph after robot starts moving to avoid dense graph around the stationary robot   
 
@@ -519,6 +521,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   }
   else if(status_.mode == plan_status::MODE::GLOBALEXP && end_of_path())
   {
+    stop_if_cliff_after_eop();
+
     update_base_to_world();
     Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
     octMan_->update_robot_pos(robPos);
@@ -536,6 +540,8 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   }
   else if( (status_.mode == plan_status::MODE::LOCALEXP) && end_of_path())
   {
+    stop_if_cliff_after_eop();
+
     ROS_WARN("%s: Local exp mode end-of-path, planning exploration path", nh_->getNamespace().c_str());
     Eigen::MatrixXd minCstPath = plan_exploration_path(); // vehicle already stopped for computation due to EOP
     if(minCstPath.rows() > 0) // exploration path found
@@ -683,17 +689,32 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
 }
 
 // ***************************************************************************
+void scan_plan::stop_if_cliff_after_eop()
+{
+  if(minCstPath_.rows() < 2) // need atleast two path points to extrapolate
+    return;
+
+  Eigen::Vector3d pos1 = minCstPath_.row(minCstPath_.rows()-2).transpose();
+  Eigen::Vector3d pos2 = minCstPath_.row(minCstPath_.rows()-1).transpose();
+  double heading = std::atan2( (pos2(1)-pos1(1)) , (pos2(0)-pos1(0)) );
+
+  if( octMan_->check_for_cliff(pos2, heading) )
+   path_man::publish_empty_path(worldFrameId_, pathPub_);
+}
+
+// ***************************************************************************
 Eigen::MatrixXd scan_plan::plan_exploration_path()
 {
   ROS_WARN("%s: Planning locally", nh_->getNamespace().c_str());
   status_.mode = plan_status::MODE::LOCALEXP;
   Eigen::MatrixXd minCstPathLocal = plan_locally(); // does not give a path if vol gain is low, outputs path that maintain neighbor separation if one exists
 
+  double localPathSeparation = -1.0;
   if( minCstPathLocal.rows() > 0 )
   {
     ROS_WARN("%s: Local path found", nh_->getNamespace().c_str());
-    double separation = path_man::point_to_paths_dist(minCstPathLocal.bottomRows(1).transpose(), posHistNeighbors_);
-    if( ( separation < 0 || separation >= graph_->get_min_separation_robots() ) )
+    localPathSeparation = path_man::point_to_paths_dist(minCstPathLocal.bottomRows(1).transpose(), posHistNeighbors_);
+    if( ( localPathSeparation < 0 || localPathSeparation >= graph_->get_min_separation_robots() ) )
     {
       status_.mode = plan_status::MODE::LOCALEXP;
       return minCstPathLocal;
@@ -705,6 +726,7 @@ Eigen::MatrixXd scan_plan::plan_exploration_path()
 
   // either no local path with enough vol gain exists or it doesn't maintain enough separation with neigbors  
 
+  double globalPathSeparation = -1.0;
   Eigen::MatrixXd minCstPathGlobal(0,0);
   if(!graph_->is_empty_frontiers()) 
   {
@@ -714,8 +736,8 @@ Eigen::MatrixXd scan_plan::plan_exploration_path()
     if( minCstPathGlobal.rows() > 0 )
     {
       ROS_WARN("%s: Global path found", nh_->getNamespace().c_str());
-      double separation = path_man::point_to_paths_dist(minCstPathGlobal.bottomRows(1).transpose(), posHistNeighbors_);
-      if( ( separation < 0 || separation >= graph_->get_min_separation_robots() ) )
+      globalPathSeparation = path_man::point_to_paths_dist(minCstPathGlobal.bottomRows(1).transpose(), posHistNeighbors_);
+      if( ( globalPathSeparation < 0 || globalPathSeparation >= graph_->get_min_separation_robots() ) )
       {
         status_.mode = plan_status::MODE::GLOBALEXP;
         return minCstPathGlobal;
@@ -729,14 +751,32 @@ Eigen::MatrixXd scan_plan::plan_exploration_path()
 
    // No path with enough vol gain and enough neighbor separation exist but minCstPathLocal and minCstPathGlobal may have enough vol gain paths
 
+   if( minCstPathLocal.rows() > 0 && minCstPathGlobal.rows() > 0 )
+   {
+     if( globalPathSeparation > localPathSeparation )
+     {
+       ROS_WARN("%s: Global path has better separation", nh_->getNamespace().c_str());
+       status_.mode = plan_status::MODE::GLOBALEXP;
+       return minCstPathGlobal;
+     }
+     else
+     {
+       ROS_WARN("%s: Local path has better separation", nh_->getNamespace().c_str());
+       status_.mode = plan_status::MODE::LOCALEXP;
+       return minCstPathLocal;
+     }
+   }
+
    if( minCstPathLocal.rows() > 0 )
    {
+     ROS_WARN("%s: Sending local path", nh_->getNamespace().c_str());
      status_.mode = plan_status::MODE::LOCALEXP;
      return minCstPathLocal;
    }
 
    if( minCstPathGlobal.rows() > 0 )
    {
+     ROS_WARN("%s: Sending global path", nh_->getNamespace().c_str());
      status_.mode = plan_status::MODE::GLOBALEXP;
      return minCstPathGlobal;
    }
