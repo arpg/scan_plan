@@ -104,7 +104,6 @@ private:
 
   plan_status status_;
 
-  double volGainMonitorDur_; // secs
   double minVolGainLocalPlan_;
   int nTriesLocalPlan_;
   int nTriesGlobalPlan_; // number of frontiers to plan
@@ -112,7 +111,6 @@ private:
   int nTriesPathValidation_; // number of consecutive invalidation attempt to delare a dynamic obstacle
 
   double minPathDistTimerBasedReplan_;
-  double timeIntTimerBasedReplan_;
 
   double endOfPathSuccRad_;
 

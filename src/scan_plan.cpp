@@ -150,7 +150,6 @@ void scan_plan::setup_timers()
 
   while(!nh_->getParam("time_interval_replan", timeIntReplan_));
   while(!nh_->getParam("min_path_dist_time_based_replan", minPathDistTimerBasedReplan_));
-  while(!nh_->getParam("time_interval_timer_based_replan", timeIntTimerBasedReplan_));
 
   ROS_INFO("%s: Creating timers ...", nh_->getNamespace().c_str());
   timerReplan_ = nh_->createTimer(ros::Duration(timeIntReplan_), &scan_plan::timer_replan_cb, this);
@@ -209,7 +208,6 @@ void scan_plan::setup_scan_plan()
   while(!nh_->getParam("min_bnds_geofence", geoFenceMin) || geoFenceMin.size() != 3);
   while(!nh_->getParam("max_bnds_geofence", geoFenceMax) || geoFenceMax.size() != 3); // in world frame
   while(!nh_->getParam("n_hist_pts_for_exploration_dir", nHistPosesExpDir_));
-  while(!nh_->getParam("vol_gain_monitor_dur_mode_switch", volGainMonitorDur_));
   while(!nh_->getParam("min_vol_gain_local_plan", minVolGainLocalPlan_));
   while(!nh_->getParam("no_of_tries_local_plan", nTriesLocalPlan_));
   while(!nh_->getParam("no_of_tries_global_plan", nTriesGlobalPlan_));
@@ -691,7 +689,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
 // ***************************************************************************
 void scan_plan::stop_if_cliff_after_eop()
 {
-  if(minCstPath_.rows() < 2) // need atleast two path points to extrapolate
+  if(minCstPath_.rows() < 2 || octMan_->vehicle_type() == "air") // need atleast two path points to extrapolate
     return;
 
   Eigen::Vector3d pos1 = minCstPath_.row(minCstPath_.rows()-2).transpose();

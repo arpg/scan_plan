@@ -607,12 +607,31 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
   if( frontiers.empty() )
     return Eigen::MatrixXd(0,0);
 
+  Eigen::MatrixXd pathOut(0,0);
+
   if( (pathsIn.size() > 0) && (pathsIn[0].rows() > 0) )
   {
     std::forward_list<frontier> frontiersSeparated = pull_well_separated_frontiers(frontiers, pathsIn);
     if( !frontiersSeparated.empty() )
-      frontiers = frontiersSeparated;
+      pathOut = plan_to_frontier(fromVertex, nTotalTries, pathsIn, frontiersSeparated);
   }
+
+  if( pathOut.rows() > 1 )
+    return pathOut;
+  else
+    pathOut = plan_to_frontier(fromVertex, nTotalTries, pathsIn, frontiers);
+
+  if( pathOut.rows() > 1 )
+    return pathOut;
+  else
+    return Eigen::MatrixXd(0,0);
+}
+
+// ***************************************************************************
+Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries, const std::vector<Eigen::MatrixXd>& pathsIn, std::forward_list<frontier> frontiers)
+{
+  // plan to frontier from the given list
+  // only to be used with the main plan_to_frontier function
 
   double dummyDist;
   frontier closestFrontier = closest_frontier( get_pos(fromVertex), dummyDist, frontiers ); // dummyDist >= 0 cz frontiers is not empty
@@ -645,10 +664,7 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
    
     nTries++;
   }
-
-  return Eigen::MatrixXd(0,0);
 }
-
 // ***************************************************************************
 frontier graph::get_recent_frontier(const Eigen::Vector3d& posIn) // returns frontier with <= 0 volGain if none found, avoids avoidFrontiers
 {
