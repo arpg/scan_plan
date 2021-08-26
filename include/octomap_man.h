@@ -55,6 +55,10 @@ public:
   bool u_coll_with_update(Eigen::Vector4d&);
   bool u_coll_air(const Eigen::Vector4d&);
 
+  bool validate(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);
+  bool validate1(const Eigen::Vector4d&);
+  bool validate2(const Eigen::Vector4d&);
+
   bool cast_pose_down(const Eigen::Vector4d&, Eigen::Vector3d& avgGroundPt);
   bool cast_pose_down(const Eigen::Vector4d&, Eigen::Vector3d& avgGroundPt, double& minElevation, double& maxElevation);
   int cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& groundPt, double& groundRoughness);

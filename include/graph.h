@@ -99,6 +99,8 @@ private:
   std::vector<VertexDescriptor> vertsOutDesc_; // preventing memory allocation in add_vertex functions
   std::vector<double> vertsOutDist_; // preventing memory allocation in add_vertex functions
 
+  std::vector<VertexDescriptor> posHistVerts_; // list of pos history vertices
+
  
   // if a node in the graph is removed, the iterators may change, frontier nodes cannot be tracked using VertexIterator in that case
   // Preference 1. Don't remove anything from the graph
@@ -125,6 +127,7 @@ public:
   void update_frontiers_vol_gain();
   bool add_path(Eigen::MatrixXd& path, bool containFrontier);
   Eigen::Vector3d get_pos(const VertexDescriptor&);
+  Eigen::Vector3d set_pos(const VertexDescriptor& vertexD, const Eigen::Vector3d& posIn);
   double closest_frontier_man_dist(const Eigen::Vector3d& ptIn);
   bool is_valid(const VertexDescriptor& vertDesc);
 
@@ -148,10 +151,14 @@ public:
   Eigen::MatrixXd plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries, const std::vector<Eigen::MatrixXd>& pathsIn);
   Eigen::MatrixXd plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries, const std::vector<Eigen::MatrixXd>& pathsIn, std::forward_list<frontier> frontiers);
 
-  std::forward_list<frontier> pull_well_separated_frontiers(std::forward_list<frontier> frontiersIn, const std::vector<Eigen::MatrixXd>& pathsIn);
+  std::forward_list<frontier> pull_well_separated_frontiers(const std::vector<Eigen::MatrixXd>& pathsIn, std::forward_list<frontier>& frontiersIn);
 
   void set_min_dist_nodes(const double&);
   double get_min_separation_robots();
+
+  void update_pos_hist(const Eigen::MatrixXd& posHistIn);
+  VertexDescriptor closest_vertex(const Eigen::Vector3d& ptIn, double& minManDist);
+  VertexDescriptor latest_pos_vert(double&);
 };
 
 // ***************************************************************************

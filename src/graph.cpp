@@ -53,6 +53,7 @@ bool graph::add_vertex(const gvert& vertIn, bool ignodeMinDistNodes)
 bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc, bool ignoreMinDistNodes)
 {
   // return true if a connected vertex is added, false if either vertex is not added or added but is not connected
+  // if ignoreMinDistNodes=true, a vertex should always be added, other code assumes a valid descriptor in that case, be careful when changing
 
   // TODO: Consider using manhattan distance as the edge cost to speed up 
   bool success = false;
@@ -119,7 +120,19 @@ bool graph::add_vertex(const gvert& vertIn, VertexDescriptor& vertInDesc, bool i
 // ***************************************************************************
 Eigen::MatrixXd graph::plan_home(const VertexDescriptor& fromVert)
 {
-  return plan_shortest_path(fromVert, homeVert_);
+  // return plan_shortest_path(fromVert, homeVert_);
+
+  int homeDist = 0;
+  Eigen::MatrixXd homePath(0,0);
+
+  for( int i=0; i<posHistVerts_.size(); i+=10 )
+  {
+    homePath = plan_shortest_path(fromVert, posHistVerts_[i]);
+    if(homePath.rows() > 1)
+      return homePath;
+  }
+
+  return Eigen::MatrixXd(0,0);
 }
 
 // ***************************************************************************
@@ -147,7 +160,7 @@ void graph::update_occupancy(const Eigen::Vector3d& minPt, const Eigen::Vector3d
       continue;
 
     //std::cout << "Checking for collision to check occupancy" << std::endl;
-    if( octMan_->u_coll( get_src_pos(*it), get_tgt_pos(*it) ) ) // if edge intersects the input bounds and is in collision
+    if( !octMan_->validate( get_src_pos(*it), get_tgt_pos(*it) ) ) // if edge intersects the input bounds and is in collision
     { 
       // set edge weight to negative so the edges filter out when graph is filtered
       if(edgeWeight > 0)
@@ -359,37 +372,44 @@ void graph::update_frontiers_vol_gain()
 }
 
 // ***************************************************************************
-std::forward_list<frontier> graph::pull_well_separated_frontiers(std::forward_list<frontier> frontiersIn, const std::vector<Eigen::MatrixXd>& pathsIn)
+std::forward_list<frontier> graph::pull_well_separated_frontiers(const std::vector<Eigen::MatrixXd>& pathsIn, std::forward_list<frontier>& frontiersIn)
 {
-// extract frontiers that are far from pathsIn
+// extract frontiers that are far from pathsIn, put the remaining ones in frontiersIn
 
   if( frontiersIn.empty() ) 
     return frontiersIn;
 
-  std::forward_list<frontier> frontiers;
+  std::forward_list<frontier> frontiersWs; // well-separated frontiers
+  std::forward_list<frontier> frontiersOut; // remaining frontiers
+
   frontier maxCstFrontier;
 
-  double maxCst = -1.0; // separation cannot be less than zero
+  double maxCst = -2.0; // separation cannot be less than -1.0
   for(frontier& front: frontiersIn)
   {
    double separationDist = path_man::point_to_paths_dist(get_pos(front.vertDesc), pathsIn);
    if( (separationDist < 0.0) || (separationDist >= minSeparationRobots_) ) // push the well-separated ones to the list
-     frontiers.push_front(front);
-   else if( separationDist > maxCst ) // from not -well-separated ones, find the one with maximum separation
+     frontiersWs.push_front(front); 
+   else
+     frontiersOut.push_front(front); 
+
+   if( separationDist > maxCst ) // simultaneously find the one with maximum separation
    {
      maxCst = separationDist;
      maxCstFrontier = front;
    }
   }
 
-  // since frontiersIn should not be empty, frontiers or maxCstFrontier should have/be atleast one valid frontier
+  // since frontiersIn should not be empty, frontiersWs or maxCstFrontier should have/be atleast one valid frontier
   // if can't find the one with good enough distance, find the one with max distance
 
-  if( frontiers.empty() )
-    frontiers.push_front(maxCstFrontier);
+  if( frontiersWs.empty() )
+    frontiersWs.push_front(maxCstFrontier);
   else
-    frontiers.reverse();
-  return frontiers;
+    frontiersWs.reverse();
+
+  frontiersIn = frontiersOut;
+  return frontiersWs;
 }
 
 // ***************************************************************************
@@ -456,6 +476,103 @@ bool graph::add_path(Eigen::MatrixXd& path, bool containFrontier)
 }
 
 // ***************************************************************************
+void graph::update_pos_hist(const Eigen::MatrixXd& posHistIn)
+{
+  // force add pos hist edges
+  if( posHistIn.rows() < 1 )
+    return;
+  if( posHistIn.rows() < posHistVerts_.size() )
+  {
+    ROS_WARN("scan_plan: Position history size has reduced, not adding to the graph");
+    return;
+  }
+
+  gvert vertIn;
+  vertIn.commSig = 0.0;
+  vertIn.isFrontier = false;
+  vertIn.terrain = gvert::Terrain::UNKNOWN;
+
+  VertexDescriptor vertInDesc;
+
+  if( posHistVerts_.size() < 1 ) // list not yet initialized, input pos hist is not empty
+  {
+    gvert vertIn;
+    vertIn.pos = posHistIn.row(0).transpose();
+    
+    add_vertex(vertIn, vertInDesc, true); // ignoreMinDistNodes == true so the node is always added (i.e., vertInDesc is valid)
+    posHistVerts_.push_back( vertInDesc );
+
+    return;
+  }
+    
+  for( int i=0; i<posHistIn.rows(); i++ )
+  {
+    if( i < posHistVerts_.size() )
+      set_pos( posHistVerts_[i], posHistIn.row(i).transpose() );
+
+    else
+    {
+      vertIn.pos = posHistIn.row(i).transpose();
+
+      add_vertex(vertIn, vertInDesc, true); // ignoreMinDistNodes == true so the node is always added (i.e., vertInDesc is valid)
+      posHistVerts_.push_back( vertInDesc );
+
+      double dist = ( get_pos(posHistVerts_[i-1]), get_pos(posHistVerts_[i]) ).norm();
+      boost::add_edge( posHistVerts_[i-1], posHistVerts_[i], dist, *adjList_ );
+    }
+  } 
+}
+
+// ***************************************************************************
+VertexDescriptor graph::latest_pos_vert(double& dist)
+{
+  // returns the latest pos history vertex if distance is non-negative
+  
+  dist = -1.0;
+
+  VertexDescriptor vertDesc;
+  if( posHistVerts_.size() < 1 )
+    return vertDesc;
+  return posHistVerts_.back();
+}
+
+// ***************************************************************************
+VertexDescriptor graph::closest_vertex(const Eigen::Vector3d& ptIn, double& minManDist)
+{
+  // valid return if minManDist is returning a non-negative value
+
+  std::pair<VertexIterator, VertexIterator> vertItr = boost::vertices(*adjList_);
+
+  VertexDescriptor closestVert;
+  minManDist = -1.0; 
+
+  bool isFirst = true;
+  for(VertexIterator it=vertItr.first; it!=vertItr.second; ++it)
+  {
+    if( boost::in_degree(*it, *adjList_) < 1 )
+      continue;
+
+    if( isFirst ) 
+    {
+      closestVert = *it;
+      minManDist = (get_pos(*it) - ptIn).lpNorm<1>();
+
+      isFirst = false;
+      continue;
+    }
+    
+    double dist = (get_pos(*it) - ptIn).lpNorm<1>();
+    if( dist < minManDist )
+    {
+      closestVert = *it;
+      minManDist = dist;
+    }
+  }
+
+  return closestVert;
+}
+
+// ***************************************************************************
 frontier graph::closest_frontier(const Eigen::Vector3d& ptIn, double& dist, std::forward_list<frontier> frontiersIn) // closest frontier to the ptIn
 {
   if(frontiersIn.empty())
@@ -466,11 +583,27 @@ frontier graph::closest_frontier(const Eigen::Vector3d& ptIn, double& dist, std:
     return front;
   }  
 
-  frontier closestFront = frontiersIn.front(); // pick the first frontier as the best guess
-  double minDist = (get_pos(closestFront.vertDesc) - ptIn).lpNorm<1>();
+  frontier closestFront;
+  dist = -1.0;
+  closestFront.volGain = -1.0;
 
+  double minDist = -1.0;
+
+  bool isFirst = true;
   for(frontier& front: frontiersIn)
   {
+    if( boost::in_degree(front.vertDesc, *adjList_) < 1 )
+      continue;
+
+    if(isFirst)
+    {
+      closestFront = frontiersIn.front(); // pick the first frontier as the best guess
+      minDist = (get_pos(closestFront.vertDesc) - ptIn).lpNorm<1>();
+
+      isFirst = false;
+      continue;
+    }
+
     double manDist = (get_pos(front.vertDesc) - ptIn).lpNorm<1>();
     if( manDist < minDist )
     {
@@ -516,6 +649,12 @@ std::vector<VertexDescriptor> graph::find_vertices_inside_box(const Eigen::Vecto
 Eigen::Vector3d graph::get_pos(const VertexDescriptor& vertexD)
 {
   return (*adjList_)[vertexD].pos;
+}
+
+// ***************************************************************************
+Eigen::Vector3d graph::set_pos(const VertexDescriptor& vertexD, const Eigen::Vector3d& posIn)
+{
+  (*adjList_)[vertexD].pos = posIn;
 }
 
 // ***************************************************************************
@@ -609,9 +748,9 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
 
   Eigen::MatrixXd pathOut(0,0);
 
-  if( (pathsIn.size() > 0) && (pathsIn[0].rows() > 0) )
+  if( (pathsIn.size() > 0) && (pathsIn[0].rows() > 0) ) // existing neighbor pose graphs
   {
-    std::forward_list<frontier> frontiersSeparated = pull_well_separated_frontiers(frontiers, pathsIn);
+    std::forward_list<frontier> frontiersSeparated = pull_well_separated_frontiers(pathsIn, frontiers);
     if( !frontiersSeparated.empty() )
       pathOut = plan_to_frontier(fromVertex, nTotalTries, pathsIn, frontiersSeparated);
   }
@@ -664,6 +803,8 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
    
     nTries++;
   }
+
+  return Eigen::MatrixXd(0,0);
 }
 // ***************************************************************************
 frontier graph::get_recent_frontier(const Eigen::Vector3d& posIn) // returns frontier with <= 0 volGain if none found, avoids avoidFrontiers

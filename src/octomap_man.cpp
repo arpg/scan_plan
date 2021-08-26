@@ -145,6 +145,115 @@ bool octomap_man::u_coll_air(const Eigen::Vector4d& pose) // x,y,z,theta
 
   return false;
 }
+// ***************************************************************************
+bool octomap_man::validate(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
+{
+  const double delLambda = radRob_ / (2*(pos2 - pos1).norm()); // projection surfaces should overlap so a thin wall below a path is not missed
+
+  double lambda = 0;
+  Eigen::Vector3d pos;
+  double yaw = atan2( ( pos2(1) - pos1(1) ) , ( pos2(0) - pos1(0) ) );
+
+  while(lambda <= 1)
+  {
+    pos = (1-lambda)*pos1 + lambda*pos2; 
+
+    if ( !validate2( Eigen::Vector4d(pos(0),pos(1),pos(2),yaw) ) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) )
+      return false; // under-collision
+
+    lambda += delLambda;
+  }
+
+  return true; // collision-free
+}
+
+// ***************************************************************************
+bool octomap_man::validate1(const Eigen::Vector4d& pose)
+{
+  const int nCollisionVoxs = 4;
+
+  if( surfCoordsBase_.rows() < 1 ) // if the robot is represented by no surface shadow, then return unsuccessful projection
+  {
+    ROS_ERROR( "scan_plan: Ground robot footprint is zero" ); 
+    return false;
+  }
+
+  if( (baseFrameHeightAboveGround_-maxGroundStep_) < 3*octTree_->getResolution() )
+    ROS_WARN("scan_plan path validate: Not enough clearance below the path");
+
+  if( surfCoordsBase_.rows()  < nCollisionVoxs )
+    ROS_WARN("scan_plan path validate: Not enough voxels in the robot footprint");    
+
+  int occupiedVoxs = 0;
+  for(int i=0; i<surfCoordsBase_.rows(); i++)
+  {
+    Eigen::Vector3d pos( pose(0), pose(1), pose(2) );
+    double yaw = pose(3);
+    Eigen::Vector3d ptIn( rotz(surfCoordsBase_.row(i), yaw) + pos );
+
+    octomap::OcTreeKey currKey = octTree_->coordToKey (ptIn(0), ptIn(1), ptIn(2)); // initialize key at current robot position
+
+    #ifdef WITH_ROUGHNESS
+      octomap::RoughOcTree::NodeType* currNodeTop = octTree_->search(currKey);
+      currKey.k[2]--;
+      octomap::RoughOcTree::NodeType* currNodeBottom = octTree_->search(currKey);
+    #else
+      octomap::OcTreeNode* currNodeTop = octTree_->search(currKey);
+      currKey.k[2]--;
+      octomap::OcTreeNode* currNodeBottom = octTree_->search(currKey);
+    #endif
+
+    if (octTree_->isNodeOccupied(currNodeTop)) // if occupied
+      occupiedVoxs++;
+    if (octTree_->isNodeOccupied(currNodeBottom)) // if occupied
+      occupiedVoxs++;
+  }
+
+  if(occupiedVoxs < nCollisionVoxs)
+    return true;
+  return false; // under-collision
+}
+
+// ***************************************************************************
+bool octomap_man::validate2(const Eigen::Vector4d& pose)
+{
+  const int nCollisionVoxs = 4; 
+
+  Eigen::Vector3d ptIn( pose(0), pose(1), pose(2) );
+  octomap::OcTreeKey currKey = octTree_->coordToKey (ptIn(0), ptIn(1), ptIn(2)); // initialize key at current robot position
+
+  #ifdef WITH_ROUGHNESS
+    octomap::RoughOcTree::NodeType* currNode = octTree_->search(currKey);
+  #else
+    octomap::OcTreeNode* currNode = octTree_->search(currKey);
+  #endif
+
+  if (!octTree_->isNodeOccupied(currNode)) // if free
+    return true;
+  
+  int nOccupiedVoxs = 0;
+  for( int i=-1; i<=1; i++ )
+    for( int j=-1; j<=1; j++ )
+      for( int k=-1; k<=1; k++ )
+      {
+        if( i==0 && j==0 && k==0)
+          continue;
+        octomap::OcTreeKey key = currKey;
+        key.k[0] += i; key.k[1] += j; key.k[2] += k; // center voxel is in-collision, no need to check
+
+        #ifdef WITH_ROUGHNESS
+          octomap::RoughOcTree::NodeType* node = octTree_->search(currKey);
+        #else
+          octomap::OcTreeNode* node = octTree_->search(currKey);
+        #endif
+
+        nOccupiedVoxs += int(octTree_->isNodeOccupied(node));
+      }
+
+  if( (nOccupiedVoxs+1) < nCollisionVoxs ) // +1 to include the center voxel
+    return true;
+  return false; // under-collision
+}
 
 // ***************************************************************************
 bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& avgGroundPt)

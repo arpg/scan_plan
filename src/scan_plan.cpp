@@ -808,10 +808,21 @@ Eigen::MatrixXd scan_plan::plan_home()
   ROS_WARN("%s: Planning Home", nh_->getNamespace().c_str());
 
   std::cout << "Planning to graph" << std::endl;
+  double latestPosDist;
+  VertexDescriptor srcVertD = graph_->latest_pos_vert(latestPosDist);
 
-  VertexDescriptor srcVertD;
-  if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
-    return Eigen::MatrixXd(0,0); // posHist_.topRows(posHistSize_).colwise().reverse();
+  if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
+  {
+    std::cout << "Couldn't find the latest pos_hist pos nearby, looking for the closest vertex" << std::endl;
+    srcVertD = graph_->closest_vertex(robPos, latestPosDist);
+
+    if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ ) 
+    {
+      std::cout << "Couldn't find the closest vertex nearby, adding a new vertex" << std::endl;
+      if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
+        return Eigen::MatrixXd(0,0);
+    }
+  }
 
   std::cout << "Planning vertex to home vertex" << std::endl;
   Eigen::MatrixXd minCstPath = graph_->plan_home(srcVertD);
@@ -830,20 +841,6 @@ Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
   octMan_->update_robot_pos(robPos);
 
-  Eigen::Vector3d goalPtProj = goalPos;
-  double roughness;
-  if( octMan_->vehicle_type() != "air" && octMan_->cast_ray_down(goalPos, goalPtProj, roughness) != 1 )
-  {
-    ROS_WARN("%s: Could not project the goal point to the ground", nh_->getNamespace().c_str());
-    return Eigen::Vector3d(0,0);
-  }
-
-  goalPtProj(2) += octMan_->get_base_frame_height_above_ground();
-
-  std::cout << "Checking if goal and robot positions are different" << std::endl;
-  if( (goalPtProj - robPos).lpNorm<1>() < 1e-3 ) // if goal and robot pos is same
-    return Eigen::MatrixXd(0,0);
-
   gvert gphVert;
   gphVert.pos = robPos;
   gphVert.commSig = 0;
@@ -851,25 +848,72 @@ Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
   gphVert.terrain = gvert::Terrain::UNKNOWN;
 
   std::cout << "Planning to graph" << std::endl;
-  VertexDescriptor srcVertD;
-  if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
-    return Eigen::MatrixXd(0,0);
+  double latestPosDist;
+  VertexDescriptor srcVertD = graph_->latest_pos_vert(latestPosDist);
+
+  if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
+  {
+    std::cout << "Couldn't find the latest pos_hist pos nearby, looking for the closest vertex" << std::endl;
+    srcVertD = graph_->closest_vertex(robPos, latestPosDist);
+
+    if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ ) 
+    {
+      std::cout << "Couldn't find the closest vertex nearby, adding a new vertex" << std::endl;
+      if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
+        return Eigen::MatrixXd(0,0);
+    }
+  }
 
   std::cout << "Planning from graph" << std::endl;
-  octMan_->update_esdf(localBndsMin_+goalPtProj, localBndsMax_+goalPtProj); // getting the esdf around the goal rather than default robot position
 
-  gphVert.pos = goalPtProj;
-  VertexDescriptor tgtVertD;
-  if( !graph_->add_vertex(gphVert, tgtVertD, true) ) // bool ignoreMinDistNodes = true
+  double closestGoalVertDist;
+  VertexDescriptor clstVertD = graph_->closest_vertex(goalPos, closestGoalVertDist);
+  if( closestGoalVertDist < 0.0 )
+  {
+    std::cout << "Could not find graph" << std::endl;
     return Eigen::MatrixXd(0,0);
+  }
+
+  octMan_->update_esdf(localBndsMin_+goalPos, localBndsMax_+goalPos); // getting the esdf around the goal rather than default robot position
+
+  bool goalConnected = false;
+  VertexDescriptor goalVertD;
+
+  Eigen::Vector3d goalPtProj;
+  double roughness;
+  if( octMan_->vehicle_type() != "air" )
+  {
+    if( octMan_->cast_ray_down(goalPos, goalPtProj, roughness) == 1 ) // valid projection
+    {
+      goalPtProj(2) += octMan_->get_base_frame_height_above_ground();
+      gphVert.pos = goalPtProj;
+      goalConnected = graph_->add_vertex(gphVert, goalVertD, true);
+    }
+    else
+    {
+      goalPtProj = goalPos;
+      ROS_WARN("%s: Could not project the goal point to the ground", nh_->getNamespace().c_str());
+    }
+  }
+  else
+  {
+    goalPtProj = goalPos;
+    gphVert.pos = goalPtProj;
+    goalConnected = graph_->add_vertex(gphVert, goalVertD, true);
+  }
 
   octMan_->update_esdf(localBndsMin_+robPos, localBndsMax_+robPos);  // getting the esdf back around default robot position
 
   std::cout << "Planning vertex to vertex" << std::endl;
-  Eigen::MatrixXd minCstPath = graph_->plan_shortest_path(srcVertD, tgtVertD);
+  Eigen::MatrixXd minCstPath(0,0);
+  if( goalConnected )
+    minCstPath = graph_->plan_shortest_path(srcVertD, goalVertD);
+
+  if(minCstPath.rows() < 1)
+    minCstPath = graph_->plan_shortest_path(srcVertD, clstVertD);
+
   if(minCstPath.rows() < 1)
     return Eigen::MatrixXd(0,0);
-
 
   // This straight line path can be longer than near_rad_graph causing a disconnection, but once goal and robPos are added to the graph why not try a straighter path
   std::cout << "Checking if goal and robot positions can be connected via a straight line" << std::endl;
@@ -946,10 +990,6 @@ Eigen::MatrixXd scan_plan::plan_to_graph(const Eigen::Vector3d& fromPos, VertexD
 // ***************************************************************************
 Eigen::MatrixXd scan_plan::plan_globally() 
 {
-  // TODO: What if the most recent frontier is not reachable due to some reason, choose the second most recent frontier and so on
-  // TODO: Choose the most recent frontier and the closest one and check which one gives minimum path length 
-  // TODO: Add plan_to_frontier inside graph.cpp and let it deal with the above
-
   update_base_to_world();
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
   octMan_->update_robot_pos(robPos);
@@ -977,9 +1017,21 @@ Eigen::MatrixXd scan_plan::plan_globally()
   gphVert.terrain = gvert::Terrain::UNKNOWN;
 
   std::cout << "Planning to graph" << std::endl;
-  VertexDescriptor srcVertD;
-  if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
-    return Eigen::MatrixXd(0,0);
+  double latestPosDist;
+  VertexDescriptor srcVertD = graph_->latest_pos_vert(latestPosDist);
+
+  if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
+  {
+    std::cout << "Couldn't find the latest pos_hist pos nearby, looking for the closest vertex" << std::endl;
+    srcVertD = graph_->closest_vertex(robPos, latestPosDist);
+
+    if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ ) 
+    {
+      std::cout << "Couldn't find the closest vertex nearby, adding a new vertex" << std::endl;
+      if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
+        return Eigen::MatrixXd(0,0);
+    }
+  }
 
   std::cout << "Path to graph non-empty, planning over graph" << std::endl;
   Eigen::MatrixXd minCstPath = graph_->plan_to_frontier(srcVertD, nTriesGlobalPlan_, posHistNeighbors_);
@@ -1368,6 +1420,9 @@ void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
   }
 
   posHistSize_ = poseHistMsg.poses.size();
+
+  graph_->update_pos_hist(posHist_.topRows(posHistSize_));
+
   if( (isInitialized_ & 0x02) != 0x02 && poseHistMsg.poses.size() > 0 )
     isInitialized_ = isInitialized_ | 0x02;
 }
