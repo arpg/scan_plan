@@ -464,22 +464,14 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
 {
   // END-OF-TASK LOGIC FUNCTION
 
+  // stops timer to clear the queque, don't forget to start on every return
+
   if( (isInitialized_ & 0x03) != 0x03 )
     return;
-
-  //if( status_.mapUpdated ) // rate of the timer set to the slowest of the map or timer rate to ensure map is updated every time
- //   status_.mapUpdated = false;
-  //else
-  //  return;
 
   bool triedReplan = true;
 
   ros::Time timeS = ros::Time::now();
-  //update_base_to_world();
-  //Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
-
-  //TODO: Add goal point to graph while planning to a goal point because the mode switches to local so if the goal point is far from graph, connectivity might be a prob
-  //TODO: Add vehicle not moving and map change detections logic
 
   Eigen::MatrixXd minCstPathPrev = minCstPath_;
 
@@ -684,6 +676,10 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   compTimePub_.publish(computeTimeMsg);
   
   std::cout << "Replan Compute Time = " << computeTimeMsg.data << " sec" << std::endl;
+
+  // clear the queque, reset the time
+  timerReplan_.stop();
+  timerReplan_.start();
 }
 
 // ***************************************************************************
@@ -809,7 +805,7 @@ Eigen::MatrixXd scan_plan::plan_home()
 
   std::cout << "Planning to graph" << std::endl;
   double latestPosDist;
-  VertexDescriptor srcVertD = graph_->latest_pos_vert(latestPosDist);
+  VertexDescriptor srcVertD = graph_->latest_pos_vert(robPos, latestPosDist);
 
   if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
   {
@@ -849,7 +845,7 @@ Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
 
   std::cout << "Planning to graph" << std::endl;
   double latestPosDist;
-  VertexDescriptor srcVertD = graph_->latest_pos_vert(latestPosDist);
+  VertexDescriptor srcVertD = graph_->latest_pos_vert(robPos, latestPosDist);
 
   if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
   {
@@ -1018,7 +1014,7 @@ Eigen::MatrixXd scan_plan::plan_globally()
 
   std::cout << "Planning to graph" << std::endl;
   double latestPosDist;
-  VertexDescriptor srcVertD = graph_->latest_pos_vert(latestPosDist);
+  VertexDescriptor srcVertD = graph_->latest_pos_vert(robPos, latestPosDist);
 
   if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
   {

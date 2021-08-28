@@ -158,7 +158,7 @@ public:
 
   void update_pos_hist(const Eigen::MatrixXd& posHistIn);
   VertexDescriptor closest_vertex(const Eigen::Vector3d& ptIn, double& minManDist);
-  VertexDescriptor latest_pos_vert(double&);
+  VertexDescriptor latest_pos_vert(const Eigen::Vector3d& robPos, double& dist);
 };
 
 // ***************************************************************************

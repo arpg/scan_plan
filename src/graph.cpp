@@ -524,16 +524,20 @@ void graph::update_pos_hist(const Eigen::MatrixXd& posHistIn)
 }
 
 // ***************************************************************************
-VertexDescriptor graph::latest_pos_vert(double& dist)
+VertexDescriptor graph::latest_pos_vert(const Eigen::Vector3d& robPos, double& dist)
 {
   // returns the latest pos history vertex if distance is non-negative
   
   dist = -1.0;
 
   VertexDescriptor vertDesc;
-  if( posHistVerts_.size() < 1 )
+  if( posHistVerts_.size() < 1 ) // if pos history is empty
     return vertDesc;
-  return posHistVerts_.back();
+
+  vertDesc = posHistVerts_.back();
+  dist = (robPos - get_pos(vertDesc)).norm();
+
+  return vertDesc;
 }
 
 // ***************************************************************************

@@ -1,17 +1,19 @@
 <launch>
 
-	<arg name="mav_name" default="$(env ROS_NAMESPACE)" /> 
+	<arg name="vehicle_name" default="$(env ROS_NAMESPACE)" /> 
 
 	<!-- ...................... Global Planner .................... -->
 
   <node name="scan_plan_node" pkg="scan_plan" type="scan_plan_node" output="screen">
-    <remap from="~/octomap_in" to="/D01/merged_map"/>
-    <remap from="~/pose_hist_in" to="/D01/lio_sam/mapping/path"/>
+    <remap from="~/octomap_in" to="/$(arg vehicle_name)/merged_map"/>
+    <remap from="~/pose_hist_in" to="/$(arg vehicle_name)/lio_sam/mapping/path"/>
+    <!-- remap from="~/pos_hist_neighbor_in" to="/$(arg vehicle_name)/lio_sam/mapping/path"/ -->
 
-    <rosparam command="load" file="$(find scan_plan)/launch/bags/params_spot_bag.yaml" subst_value="true"/>
+    <rosparam command="load" file="$(find marble_common)/config/Spot_scan_plan.yaml" subst_value="true"/>
   </node>
 
 	<!-- ...................... Base to Base Plan Link Transform ....................... -->
 
-  <!-- node pkg="tf2_ros" type="static_transform_publisher" name="baseplan2base" args="0 0 1.0 0 0 0 D01/base_link H01/base_plan_link"/ -->
+  <!-- node pkg="tf2_ros" type="static_transform_publisher" name="h02odom2world" args="0 0 0 0 0 0 world H02/odom"/ -->
+  <!-- node pkg="tf2_ros" type="static_transform_publisher" name="baseplan2base" args="0 0 1.0 0 0 0 H01/base_link H01/base_plan_link"/ -->
 </launch>

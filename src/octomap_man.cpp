@@ -487,7 +487,7 @@ bool octomap_man::check_for_cliff(const Eigen::Vector3d& posIn, const double& he
 {
   Eigen::Vector3d unitVec( cos(headingIn), sin(headingIn), 0 );
 
-  int nVoxelsLookahead = ceil(robLength_ / octTree_->getResolution()); // one robot length lookahead
+  int nVoxelsLookahead = ceil(1.5*robLength_ / octTree_->getResolution()); // one robot length lookahead
 
   Eigen::Vector3d ptIn;
   Eigen::Vector3d groundPt;
