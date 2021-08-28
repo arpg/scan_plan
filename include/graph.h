@@ -149,7 +149,7 @@ public:
   Eigen::Vector3d get_tgt_pos(const EdgeDescriptor& edgeD);
   frontier closest_frontier(const Eigen::Vector3d& ptIn, double& dist, std::forward_list<frontier> frontiersIn);
   Eigen::MatrixXd plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries, const std::vector<Eigen::MatrixXd>& pathsIn);
-  Eigen::MatrixXd plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries, const std::vector<Eigen::MatrixXd>& pathsIn, std::forward_list<frontier> frontiers);
+  Eigen::MatrixXd plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries, std::forward_list<frontier> frontiers);
 
   std::forward_list<frontier> pull_well_separated_frontiers(const std::vector<Eigen::MatrixXd>& pathsIn, std::forward_list<frontier>& frontiersIn);
 

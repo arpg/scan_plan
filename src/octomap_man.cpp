@@ -203,9 +203,9 @@ bool octomap_man::validate1(const Eigen::Vector4d& pose)
       octomap::OcTreeNode* currNodeBottom = octTree_->search(currKey);
     #endif
 
-    if (octTree_->isNodeOccupied(currNodeTop)) // if occupied
+    if (currNodeTop != NULL && octTree_->isNodeOccupied(currNodeTop)) // if occupied
       occupiedVoxs++;
-    if (octTree_->isNodeOccupied(currNodeBottom)) // if occupied
+    if (currNodeBottom != NULL && octTree_->isNodeOccupied(currNodeBottom)) // if occupied
       occupiedVoxs++;
   }
 
@@ -228,6 +228,9 @@ bool octomap_man::validate2(const Eigen::Vector4d& pose)
     octomap::OcTreeNode* currNode = octTree_->search(currKey);
   #endif
 
+  if (currNode == NULL)
+    return true;
+
   if (!octTree_->isNodeOccupied(currNode)) // if free
     return true;
   
@@ -247,7 +250,8 @@ bool octomap_man::validate2(const Eigen::Vector4d& pose)
           octomap::OcTreeNode* node = octTree_->search(currKey);
         #endif
 
-        nOccupiedVoxs += int(octTree_->isNodeOccupied(node));
+        if(node != NULL && octTree_->isNodeOccupied(node))
+          nOccupiedVoxs++;
       }
 
   if( (nOccupiedVoxs+1) < nCollisionVoxs ) // +1 to include the center voxel

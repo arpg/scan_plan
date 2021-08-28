@@ -750,19 +750,24 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
   if( frontiers.empty() )
     return Eigen::MatrixXd(0,0);
 
+  std::cout << "Frontiers non-empty" << std::endl;
+
   Eigen::MatrixXd pathOut(0,0);
 
   if( (pathsIn.size() > 0) && (pathsIn[0].rows() > 0) ) // existing neighbor pose graphs
   {
     std::forward_list<frontier> frontiersSeparated = pull_well_separated_frontiers(pathsIn, frontiers);
     if( !frontiersSeparated.empty() )
-      pathOut = plan_to_frontier(fromVertex, nTotalTries, pathsIn, frontiersSeparated);
+      pathOut = plan_to_frontier(fromVertex, nTotalTries, frontiersSeparated);
   }
+
+  std::cout << "Planning to frontiers" << std::endl;
 
   if( pathOut.rows() > 1 )
     return pathOut;
-  else
-    pathOut = plan_to_frontier(fromVertex, nTotalTries, pathsIn, frontiers);
+  
+  if(!frontiers.empty())
+    pathOut = plan_to_frontier(fromVertex, nTotalTries, frontiers);
 
   if( pathOut.rows() > 1 )
     return pathOut;
@@ -771,10 +776,13 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
 }
 
 // ***************************************************************************
-Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries, const std::vector<Eigen::MatrixXd>& pathsIn, std::forward_list<frontier> frontiers)
+Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, const int& nTotalTries, std::forward_list<frontier> frontiers)
 {
   // plan to frontier from the given list
   // only to be used with the main plan_to_frontier function
+
+  if(frontiers.empty())
+   return Eigen::MatrixXd(0,0);
 
   double dummyDist;
   frontier closestFrontier = closest_frontier( get_pos(fromVertex), dummyDist, frontiers ); // dummyDist >= 0 cz frontiers is not empty
