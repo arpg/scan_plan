@@ -22,6 +22,12 @@ octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool us
   OcTreeT* dummy(new OcTreeT(0.1)); // necessary dummy only if using rough_octomap
 
   isInitialized_ = 0x00; // wait for the first octree msg to set this to 0x03
+
+  #ifdef WITH_ROUGHNESS
+    ROS_WARN("scan_plan: Running With Roughness");
+  #else
+    ROS_WARN("scan_plan: Running Without Roughness");
+  #endif
 }
 
 // ***************************************************************************

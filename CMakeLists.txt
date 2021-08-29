@@ -5,7 +5,7 @@ project(scan_plan)
 # add_compile_options(-std=c++11)
 add_compile_options(-ffast-math -O3 -march=native -mfma -msse2 -mavx)
 
-OPTION(WITH_ROUGHNESS "Build with traversability info?" OFF)
+OPTION(WITH_ROUGHNESS "Build with traversability info?" ON)
 IF(WITH_ROUGHNESS)
   add_definitions(-DWITH_ROUGHNESS)
 ENDIF()
