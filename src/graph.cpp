@@ -517,7 +517,7 @@ void graph::update_pos_hist(const Eigen::MatrixXd& posHistIn)
       add_vertex(vertIn, vertInDesc, true); // ignoreMinDistNodes == true so the node is always added (i.e., vertInDesc is valid)
       posHistVerts_.push_back( vertInDesc );
 
-      double dist = ( get_pos(posHistVerts_[i-1]), get_pos(posHistVerts_[i]) ).norm();
+      double dist = ( get_pos(posHistVerts_[i-1]) - get_pos(posHistVerts_[i]) ).norm();
       boost::add_edge( posHistVerts_[i-1], posHistVerts_[i], dist, *adjList_ );
     }
   } 
@@ -656,7 +656,7 @@ Eigen::Vector3d graph::get_pos(const VertexDescriptor& vertexD)
 }
 
 // ***************************************************************************
-Eigen::Vector3d graph::set_pos(const VertexDescriptor& vertexD, const Eigen::Vector3d& posIn)
+void graph::set_pos(const VertexDescriptor& vertexD, const Eigen::Vector3d& posIn)
 {
   (*adjList_)[vertexD].pos = posIn;
 }
@@ -750,8 +750,6 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
   if( frontiers.empty() )
     return Eigen::MatrixXd(0,0);
 
-  std::cout << "Frontiers non-empty" << std::endl;
-
   Eigen::MatrixXd pathOut(0,0);
 
   if( (pathsIn.size() > 0) && (pathsIn[0].rows() > 0) ) // existing neighbor pose graphs
@@ -760,8 +758,6 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
     if( !frontiersSeparated.empty() )
       pathOut = plan_to_frontier(fromVertex, nTotalTries, frontiersSeparated);
   }
-
-  std::cout << "Planning to frontiers" << std::endl;
 
   if( pathOut.rows() > 1 )
     return pathOut;
@@ -786,6 +782,7 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
 
   double dummyDist;
   frontier closestFrontier = closest_frontier( get_pos(fromVertex), dummyDist, frontiers ); // dummyDist >= 0 cz frontiers is not empty
+
   Eigen::MatrixXd pathToClosestFrontier = plan_shortest_path(fromVertex, closestFrontier.vertDesc);
   double pathLenToClosestFrontier = path_man::path_len(pathToClosestFrontier);
 
@@ -796,7 +793,7 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
   {
     if( nTries >= nTotalTries )
       break;
-    
+
     pathToRecentFrontier = plan_shortest_path(fromVertex, front.vertDesc);
 
     double pathLenToRecentFrontier = path_man::path_len(pathToRecentFrontier);

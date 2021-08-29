@@ -127,7 +127,7 @@ public:
   void update_frontiers_vol_gain();
   bool add_path(Eigen::MatrixXd& path, bool containFrontier);
   Eigen::Vector3d get_pos(const VertexDescriptor&);
-  Eigen::Vector3d set_pos(const VertexDescriptor& vertexD, const Eigen::Vector3d& posIn);
+  void set_pos(const VertexDescriptor& vertexD, const Eigen::Vector3d& posIn);
   double closest_frontier_man_dist(const Eigen::Vector3d& ptIn);
   bool is_valid(const VertexDescriptor& vertDesc);
 
