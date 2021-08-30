@@ -807,12 +807,12 @@ Eigen::MatrixXd scan_plan::plan_home()
   double latestPosDist;
   VertexDescriptor srcVertD = graph_->latest_pos_vert(robPos, latestPosDist);
 
-  if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
+  if( latestPosDist < 0.0 || latestPosDist > minPathDistTimerBasedReplan_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
   {
-    std::cout << "Couldn't find the latest pos_hist pos nearby, looking for the closest vertex" << std::endl;
+    std::cout << "Couldn't find the latest pos_hist pos nearby ( latestPosDist = " <<  latestPosDist << "), looking for the closest vertex" << std::endl;
     srcVertD = graph_->closest_vertex(robPos, latestPosDist);
 
-    if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ ) 
+    if( latestPosDist < 0.0 || latestPosDist > minPathDistTimerBasedReplan_ ) 
     {
       std::cout << "Couldn't find the closest vertex nearby, adding a new vertex" << std::endl;
       if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
@@ -822,7 +822,7 @@ Eigen::MatrixXd scan_plan::plan_home()
 
   std::cout << "Planning vertex to home vertex" << std::endl;
   Eigen::MatrixXd minCstPath = graph_->plan_home(srcVertD);
-  if(minCstPath.rows() < 1)
+  if(minCstPath.rows() < 2)
     return Eigen::MatrixXd(0,0); // posHist_.topRows(posHistSize_).colwise().reverse();
 
   return minCstPath;
@@ -847,12 +847,12 @@ Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
   double latestPosDist;
   VertexDescriptor srcVertD = graph_->latest_pos_vert(robPos, latestPosDist);
 
-  if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
+  if( latestPosDist < 0.0 || latestPosDist > minPathDistTimerBasedReplan_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
   {
-    std::cout << "Couldn't find the latest pos_hist pos nearby, looking for the closest vertex" << std::endl;
+    std::cout << "Couldn't find the latest pos_hist pos nearby ( latestPosDist = " <<  latestPosDist << "), looking for the closest vertex" << std::endl;
     srcVertD = graph_->closest_vertex(robPos, latestPosDist);
 
-    if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ ) 
+    if( latestPosDist < 0.0 || latestPosDist > minPathDistTimerBasedReplan_ ) 
     {
       std::cout << "Couldn't find the closest vertex nearby, adding a new vertex" << std::endl;
       if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
@@ -905,10 +905,10 @@ Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
   if( goalConnected )
     minCstPath = graph_->plan_shortest_path(srcVertD, goalVertD);
 
-  if(minCstPath.rows() < 1)
+  if(minCstPath.rows() < 2)
     minCstPath = graph_->plan_shortest_path(srcVertD, clstVertD);
 
-  if(minCstPath.rows() < 1)
+  if(minCstPath.rows() < 2)
     return Eigen::MatrixXd(0,0);
 
   // This straight line path can be longer than near_rad_graph causing a disconnection, but once goal and robPos are added to the graph why not try a straighter path
@@ -1016,12 +1016,12 @@ Eigen::MatrixXd scan_plan::plan_globally()
   double latestPosDist;
   VertexDescriptor srcVertD = graph_->latest_pos_vert(robPos, latestPosDist);
 
-  if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
+  if( latestPosDist < 0.0 || latestPosDist > minPathDistTimerBasedReplan_ )  // TODO: 5.0 -> path start tolerance from the rob pos, like endOfPathSuccRad_ 
   {
-    std::cout << "Couldn't find the latest pos_hist pos nearby, looking for the closest vertex" << std::endl;
+    std::cout << "Couldn't find the latest pos_hist pos nearby ( latestPosDist = " <<  latestPosDist << "), looking for the closest vertex" << std::endl;
     srcVertD = graph_->closest_vertex(robPos, latestPosDist);
 
-    if( latestPosDist < 0.0 || latestPosDist > endOfPathSuccRad_ ) 
+    if( latestPosDist < 0.0 || latestPosDist > minPathDistTimerBasedReplan_ ) 
     {
       std::cout << "Couldn't find the closest vertex nearby, adding a new vertex" << std::endl;
       if( !graph_->add_vertex(gphVert, srcVertD, true) ) // bool ignoreMinDistNodes = true
@@ -1032,7 +1032,7 @@ Eigen::MatrixXd scan_plan::plan_globally()
   std::cout << "Path to graph non-empty, planning over graph" << std::endl;
   Eigen::MatrixXd minCstPath = graph_->plan_to_frontier(srcVertD, nTriesGlobalPlan_, posHistNeighbors_);
 
-  if(minCstPath.rows() < 1)
+  if(minCstPath.rows() < 2)
     return Eigen::MatrixXd(0,0);
   std::cout << "Planning over graph successful" << std::endl;
 

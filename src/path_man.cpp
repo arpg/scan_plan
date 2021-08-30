@@ -197,7 +197,7 @@ bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBn
   if( path.rows() == 0 )
     return true;
 
-  if(path.rows() == 1) // path with one point is invalid, nothing to check
+  if(path.rows() == 1 || path_len(path) < 1e-3) // path with one point is invalid, nothing to check
   {
     path.conservativeResize(0, Eigen::NoChange);
     return false;

@@ -38,10 +38,10 @@ struct gvert
   enum Terrain { FLAT, CLIFF, STEPS, UNKNOWN };
 
   Eigen::Vector3d pos; // position
-  int commSig; // communication strength (0-100)
-  bool isFrontier; // if the node is a frontier
+  int commSig = 0.0; // communication strength (0-100)
+  bool isFrontier = false; // if the node is a frontier
   
-  Terrain terrain;
+  Terrain terrain = Terrain::UNKNOWN;
 };
 
 // *************************************************************************** // TODO: Checkout other graph types, mutable, undirected? Any faster?

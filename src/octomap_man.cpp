@@ -56,8 +56,13 @@ bool octomap_man::u_coll(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos
 // ***************************************************************************
 bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
 {
-  //const double delLambda = octTree_->getResolution() / (pos2 - pos1).norm(); // projection surfaces should overlap so a thin wall below a path is not missed
-  const double delLambda = radRob_ / (2*(pos2 - pos1).norm()); // projection surfaces should overlap so a thin wall below a path is not missed
+  const double distPos = (pos2 - pos1).norm();
+  double delLambda;
+
+  if( distPos < 1e-3 )
+    delLambda = 1.1;
+  else
+    delLambda = radRob_ / (2*distPos); // projection surfaces should overlap so a thin wall below a path is not missed
 
   double lambda = 0;
   Eigen::Vector3d pos;
@@ -79,8 +84,13 @@ bool octomap_man::u_coll_ground(const Eigen::Vector3d& pos1, const Eigen::Vector
 // ***************************************************************************
 bool octomap_man::u_coll_air(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
 {
-  //const double delLambda = octTree_->getResolution() / (pos2 - pos1).norm();
-  const double delLambda = radRob_ / (2*(pos2 - pos1).norm());
+  const double distPos = (pos2 - pos1).norm();
+  double delLambda;
+
+  if( distPos < 1e-3 )
+    delLambda = 1.1;
+  else
+    delLambda = radRob_ / (2*distPos);
 
   //std::cout << "Delta lambda for u_coll: " << delLambda << std::endl;
   double lambda = 0;
@@ -154,7 +164,13 @@ bool octomap_man::u_coll_air(const Eigen::Vector4d& pose) // x,y,z,theta
 // ***************************************************************************
 bool octomap_man::validate(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2)
 {
-  const double delLambda = radRob_ / (2*(pos2 - pos1).norm()); // projection surfaces should overlap so a thin wall below a path is not missed
+  const double distPos = (pos2 - pos1).norm();
+  double delLambda;
+
+  if( distPos < 1e-3 )
+    delLambda = 1.1;
+  else
+    delLambda = radRob_ / (2*distPos); // projection surfaces should overlap so a thin wall below a path is not missed
 
   double lambda = 0;
   Eigen::Vector3d pos;

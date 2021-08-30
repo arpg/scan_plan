@@ -496,7 +496,6 @@ void graph::update_pos_hist(const Eigen::MatrixXd& posHistIn)
 
   if( posHistVerts_.size() < 1 ) // list not yet initialized, input pos hist is not empty
   {
-    gvert vertIn;
     vertIn.pos = posHistIn.row(0).transpose();
     
     add_vertex(vertIn, vertInDesc, true); // ignoreMinDistNodes == true so the node is always added (i.e., vertInDesc is valid)
@@ -711,7 +710,10 @@ Eigen::MatrixXd graph::plan_shortest_path(const VertexDescriptor& fromVertex, co
       itr++;
     }
 
-    return shortestPathEig;
+    if(path_man::path_len(shortestPathEig) > 1e-3)
+      return shortestPathEig;
+    else
+      return Eigen::MatrixXd(0,0);
   }
   
   return Eigen::MatrixXd(0,0);
