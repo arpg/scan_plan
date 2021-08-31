@@ -1417,7 +1417,8 @@ void scan_plan::pose_hist_cb(const nav_msgs::Path& poseHistMsg)
 
   posHistSize_ = poseHistMsg.poses.size();
 
-  graph_->update_pos_hist(posHist_.topRows(posHistSize_));
+  if( (isInitialized_ & 0x01) == 0x01 ) // only if octomap is initialized
+    graph_->update_pos_hist(posHist_.topRows(posHistSize_));
 
   if( (isInitialized_ & 0x02) != 0x02 && poseHistMsg.poses.size() > 0 )
     isInitialized_ = isInitialized_ | 0x02;

@@ -529,7 +529,7 @@ VertexDescriptor graph::latest_pos_vert(const Eigen::Vector3d& robPos, double& d
   
   dist = -1.0;
 
-  VertexDescriptor vertDesc;
+  VertexDescriptor vertDesc = homeVert_; // home vert is always valid
   if( posHistVerts_.size() < 1 ) // if pos history is empty
     return vertDesc;
 
@@ -546,7 +546,7 @@ VertexDescriptor graph::closest_vertex(const Eigen::Vector3d& ptIn, double& minM
 
   std::pair<VertexIterator, VertexIterator> vertItr = boost::vertices(*adjList_);
 
-  VertexDescriptor closestVert;
+  VertexDescriptor closestVert = homeVert_; // home vert is always valid
   minManDist = -1.0; 
 
   bool isFirst = true;
