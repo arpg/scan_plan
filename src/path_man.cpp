@@ -116,15 +116,23 @@ double path_man::point_to_paths_dist(const Eigen::Vector3d& ptIn, const std::vec
   if( pathsIn.size() < 1 )
     return -1.0;
 
-  if( pathsIn[0].rows() < 1 )
-    return -1.0;
-
-  double minDist = 0.0;
+  double minDist = -1.0;
  
+  bool isFirst = true;
   for( int i=0; i<pathsIn.size(); i++ )
   {
     double dist = point_to_path_dist(ptIn, pathsIn[i]);
-    if( (i == 0) || (dist < minDist) )
+
+    if(dist < 0.0)
+      continue;
+
+    if(isFirst)
+    {
+      minDist = dist;
+      continue;
+    }
+
+    if( dist < minDist )
       minDist = dist;
   }
 

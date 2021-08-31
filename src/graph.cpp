@@ -754,7 +754,7 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
 
   Eigen::MatrixXd pathOut(0,0);
 
-  if( (pathsIn.size() > 0) && (pathsIn[0].rows() > 0) ) // existing neighbor pose graphs
+  if(pathsIn.size() > 0) // existing neighbor pose graphs
   {
     std::forward_list<frontier> frontiersSeparated = pull_well_separated_frontiers(pathsIn, frontiers);
     if( !frontiersSeparated.empty() )
