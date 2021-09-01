@@ -285,6 +285,32 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
     return;
   }
 
+  if( taskMsg.data == "plan_global" )
+  {
+    publish_plan_status("Global Plan Requested");
+    path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for computation
+
+    if(graph_->is_empty_frontiers())
+    {
+      publish_can_plan(false);
+      return;
+    }
+
+    Eigen::MatrixXd minCstPath = plan_globally();
+
+    if(minCstPath.rows() > 1)
+    {
+      status_.mode = plan_status::MODE::GLOBALEXP;
+      minCstPath_ = minCstPath;
+      publish_can_plan(true);
+    }
+    else
+      publish_can_plan(false);
+    path_man::publish_path(minCstPath_, worldFrameId_, pathPub_); // publish path if found, otherwise publish older path and don't change mode
+
+    return;
+  }
+
   if( boost::iequals(taskMsg.data , "deconflict") )
   {
     publish_plan_status("Deconflict request received");

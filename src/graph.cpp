@@ -583,12 +583,14 @@ frontier graph::closest_frontier(const Eigen::Vector3d& ptIn, double& dist, std:
     frontier front;
     dist = -1.0;
     front.volGain = -1.0;
+    front.vertDesc = homeVert_;
     return front;
   }  
 
   frontier closestFront;
   dist = -1.0;
   closestFront.volGain = -1.0;
+  closestFront.vertDesc = homeVert_;
 
   double minDist = -1.0;
 
@@ -783,12 +785,14 @@ Eigen::MatrixXd graph::plan_to_frontier(const VertexDescriptor& fromVertex, cons
    return Eigen::MatrixXd(0,0);
 
   double dummyDist;
-  frontier closestFrontier = closest_frontier( get_pos(fromVertex), dummyDist, frontiers ); // dummyDist >= 0 cz frontiers is not empty
+  frontier closestFrontier = closest_frontier( get_pos(fromVertex), dummyDist, frontiers ); 
 
-  Eigen::MatrixXd pathToClosestFrontier = plan_shortest_path(fromVertex, closestFrontier.vertDesc);
+  Eigen::MatrixXd pathToClosestFrontier(0,0);
+  if(dummyDist >= 0.0)
+    pathToClosestFrontier = plan_shortest_path(fromVertex, closestFrontier.vertDesc);
   double pathLenToClosestFrontier = path_man::path_len(pathToClosestFrontier);
 
-  Eigen::MatrixXd pathToRecentFrontier;
+  Eigen::MatrixXd pathToRecentFrontier(0,0);
 
   int nTries = 0;
   for(frontier& front: frontiers) // assuming frontiers are arranged from most recent to old, choose the most recent from the existing list
