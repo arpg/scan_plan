@@ -7,7 +7,7 @@
   <node name="scan_plan_node" pkg="scan_plan" type="scan_plan_node" output="screen">
     <remap from="~/octomap_in" to="/$(arg vehicle_name)/merged_map"/>
     <remap from="~/pose_hist_in" to="/$(arg vehicle_name)/lio_sam/mapping/path"/>
-    <!-- remap from="~/pos_hist_neighbor_in" to="/$(arg vehicle_name)/lio_sam/mapping/path"/ -->
+    <remap from="~/pos_hist_neighbors_in" to="/$(arg vehicle_name)/pose_graph_array"/>
 
     <rosparam command="load" file="$(find marble_common)/config/Husky_scan_plan.yaml" subst_value="true"/>
   </node>

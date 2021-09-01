@@ -19,6 +19,7 @@ private:
   double maxDistEsdf_;
   bool esdfUnknownAsOccupied_;
   bool useRoughness_;
+  bool useStairs_;
 
   double radRob_; // half of the maximum dimension of the robot
   double robWidth_; 
@@ -43,7 +44,7 @@ private:
  
 public:
   ~octomap_man();
-  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool useRoughness, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent_, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh);
+  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool useRoughness, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent_, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh, bool useStairs=false);
 
   double volumetric_gain(const Eigen::Vector3d&);
 
@@ -61,7 +62,7 @@ public:
 
   bool cast_pose_down(const Eigen::Vector4d&, Eigen::Vector3d& avgGroundPt);
   bool cast_pose_down(const Eigen::Vector4d&, Eigen::Vector3d& avgGroundPt, double& minElevation, double& maxElevation);
-  int cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& groundPt, double& groundRoughness);
+  int cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& groundPt, double& groundRoughness, bool& isOnStair);
 
   void update_esdf(const Eigen::Vector3d& minBnds, const Eigen::Vector3d& maxBnds);
   void update_octree(OcTreeT* octTree);

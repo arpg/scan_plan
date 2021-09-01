@@ -165,6 +165,7 @@ void scan_plan::setup_octomap()
   double maxGroundStep, maxGroundRoughnessThresh, avgGroundRoughnessThresh, maxDistEsdf, groundPlaneSearchDist, baseFrameHeightAboveGround, robWidth, robLength, successfulProjectionsPercent;
   bool esdfUnknownAsOccupied;
   bool useRoughness = true; // can be made parameter by uneccesary at this point
+  bool useStairs = false;
 
   while(!nh_->getParam("esdf_max_dist", maxDistEsdf));
   while(!nh_->getParam("esdf_unknown_as_occupied", esdfUnknownAsOccupied));
@@ -177,10 +178,11 @@ void scan_plan::setup_octomap()
   while(!nh_->getParam("max_ground_step", maxGroundStep)); // [epsilon,inf]
   while(!nh_->getParam("max_roughness_thresh", maxGroundRoughnessThresh));
   while(!nh_->getParam("avg_roughness_thresh", avgGroundRoughnessThresh));
+  while(!nh_->getParam("is_stair_capable", useStairs));
 
   ROS_INFO("%s: Setting up octomap manager ...", nh_->getNamespace().c_str());
 
-  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, useRoughness, vehicleType, robWidth, robLength, groundPlaneSearchDist, mapSensors_, baseFrameHeightAboveGround, successfulProjectionsPercent, maxGroundStep, maxGroundRoughnessThresh, avgGroundRoughnessThresh);
+  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, useRoughness, vehicleType, robWidth, robLength, groundPlaneSearchDist, mapSensors_, baseFrameHeightAboveGround, successfulProjectionsPercent, maxGroundStep, maxGroundRoughnessThresh, avgGroundRoughnessThresh, useStairs);
 }
 
 // ***************************************************************************
@@ -876,10 +878,10 @@ Eigen::MatrixXd scan_plan::plan_to_point(const Eigen::Vector3d& goalPos)
   VertexDescriptor goalVertD;
 
   Eigen::Vector3d goalPtProj;
-  double roughness;
+  double roughness; bool isOnStairs;
   if( octMan_->vehicle_type() != "air" )
   {
-    if( octMan_->cast_ray_down(goalPos, goalPtProj, roughness) == 1 ) // valid projection
+    if( octMan_->cast_ray_down(goalPos, goalPtProj, roughness, isOnStairs) == 1 ) // valid projection
     {
       goalPtProj(2) += octMan_->get_base_frame_height_above_ground();
       gphVert.pos = goalPtProj;

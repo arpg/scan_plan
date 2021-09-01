@@ -1,11 +1,13 @@
 #include "octomap_man.h"
 
 // ***************************************************************************
-octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool useRoughness, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh)
+octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool useRoughness, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh, bool useStairs)
 {
   maxDistEsdf_ = maxDistEsdf;
   esdfUnknownAsOccupied_ = esdfUnknownAsOccupied;
   useRoughness_ = useRoughness;
+  useStairs_ = useStairs;
+
   vehicleType_ = vehicleType;
   robWidth_ = robWidth;
   robLength_ = robLength;
@@ -306,6 +308,7 @@ bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& a
 
   // if projections success is smaller than successfulProjectionsPercent, it's a cliff or severe decline so return false in that case
   int successfulProjections = 0;
+  int nStairProjections = 0;
 
   avgGroundPt = Eigen::Vector3d(0,0,0);
   Eigen::Vector3d currGroundPt(0,0,0);
@@ -317,8 +320,8 @@ bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& a
   {
     double currGroundRoughness = 0.0;
 
-   // std::cout << "Robot Pose: " << pose.transpose() << ", Surface Point: " << surfCoordsBase_.row(i) << ", " << ( rotz(surfCoordsBase_.row(i), yaw) + pos ).transpose() << std::endl;
-    int castDownStatus = cast_ray_down( rotz(surfCoordsBase_.row(i), yaw) + pos, currGroundPt, currGroundRoughness );
+    bool isOnStair;
+    int castDownStatus = cast_ray_down( rotz(surfCoordsBase_.row(i), yaw) + pos, currGroundPt, currGroundRoughness, isOnStair );
 
     if( castDownStatus == 0 ) // under-collision
       return false;
@@ -330,6 +333,9 @@ bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& a
     successfulProjections++;
     avgGroundPt += currGroundPt;
     avgRoughness += currGroundRoughness;
+
+    if(isOnStair)
+      nStairProjections++;
 
     if( currGroundRoughness >  maxRoughness )
       maxRoughness = currGroundRoughness;
@@ -346,7 +352,14 @@ bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& a
       minElevation = currGroundPt(2);
   }
 
+  if(successfulProjections < 1)
+    return false;
+
   avgRoughness /= double(successfulProjections);
+  avgGroundPt /= double(successfulProjections);
+
+  if(nStairProjections > double(surfCoordsBase_.rows())/2)
+    return true;
 
   if( (maxElevation - minElevation) > maxGroundStep_ )
     return false;
@@ -357,7 +370,6 @@ bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& a
   if( double(successfulProjections) / double(surfCoordsBase_.rows()) < successfulProjectionsPercent_ )
     return false;
 
-  avgGroundPt /= double(successfulProjections);
   return true;
 }
 
@@ -374,7 +386,7 @@ Eigen::Vector3d octomap_man::rotz(const Eigen::Vector3d& vecIn, const double& ps
 }
 
 // ***************************************************************************
-int octomap_man::cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& groundPt, double& groundRoughness)
+int octomap_man::cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& groundPt, double& groundRoughness, bool& isOnStair)
 {
   // returns 1: ground found, 0: under collision, -1: ground not found
   // groundPt only valid if 1 is returned, groundRoughness is 0.0 if ground not found or roughness value is invalid
@@ -388,6 +400,7 @@ int octomap_man::cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& gro
   #endif
 
   groundRoughness = 0.0;
+  isOnStair = false;
 
   // if unknown is occupied and the point to project is unknown, point is under collision
   if (esdfUnknownAsOccupied_ && currNode == NULL)
@@ -422,13 +435,16 @@ int octomap_man::cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& gro
     groundPt(2) = groundPtOct.z();
 
     #ifdef WITH_ROUGHNESS
-    {
       groundRoughness = currNode->getRough();
       if( std::isnan(groundRoughness) || !useRoughness_ )
         groundRoughness = 0.0;
-    }
+
+      isOnStair = octTree_->isNodeStairs(currNode);
+      if( std::isnan(isOnStair) || !useStairs_ )
+        isOnStair = false;
     #else
       groundRoughness = 0.0;
+      isOnStair = false;
     #endif
 
     return 1;
@@ -517,12 +533,12 @@ bool octomap_man::check_for_cliff(const Eigen::Vector3d& posIn, const double& he
 
   Eigen::Vector3d ptIn;
   Eigen::Vector3d groundPt;
-  double groundRoughness;
+  double groundRoughness; bool isOnStairs;
   for( int i=1; i<nVoxelsLookahead; i++ )
   {
     ptIn = posIn + i*octTree_->getResolution()*unitVec;
 
-    int uColl = cast_ray_down(ptIn, groundPt, groundRoughness);
+    int uColl = cast_ray_down(ptIn, groundPt, groundRoughness, isOnStairs);
     if( uColl == -1 ) // if not projected, it is a cliff
       return true;
     else if( uColl == 0 ) // if under-collision, not a cliff
