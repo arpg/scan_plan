@@ -162,7 +162,7 @@ void scan_plan::setup_octomap()
   ROS_INFO("%s: Waiting for octomap params ...", nh_->getNamespace().c_str());
 
   std::string vehicleType;
-  double maxGroundStep, maxGroundRoughnessThresh, avgGroundRoughnessThresh, maxDistEsdf, groundPlaneSearchDist, baseFrameHeightAboveGround, robWidth, robLength, successfulProjectionsPercent;
+  double maxGroundStep, maxGroundRoughnessThresh, avgGroundRoughnessThresh, maxDistEsdf, groundPlaneSearchDist, baseFrameHeightAboveGround, robWidth, robLength, successfulProjectionsPercent, successfulStairProjectionsPercent;
   bool esdfUnknownAsOccupied;
   bool useRoughness = true; // can be made parameter by uneccesary at this point
   bool useStairs = false;
@@ -175,6 +175,7 @@ void scan_plan::setup_octomap()
   while(!nh_->getParam("ground_plane_search_distance", groundPlaneSearchDist));
   while(!nh_->getParam("base_frame_height_above_ground", baseFrameHeightAboveGround));
   while(!nh_->getParam("successful_projection_percent", successfulProjectionsPercent));
+  while(!nh_->getParam("successful_stair_projection_percent", successfulStairProjectionsPercent));
   while(!nh_->getParam("max_ground_step", maxGroundStep)); // [epsilon,inf]
   while(!nh_->getParam("max_roughness_thresh", maxGroundRoughnessThresh));
   while(!nh_->getParam("avg_roughness_thresh", avgGroundRoughnessThresh));
@@ -182,7 +183,7 @@ void scan_plan::setup_octomap()
 
   ROS_INFO("%s: Setting up octomap manager ...", nh_->getNamespace().c_str());
 
-  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, useRoughness, vehicleType, robWidth, robLength, groundPlaneSearchDist, mapSensors_, baseFrameHeightAboveGround, successfulProjectionsPercent, maxGroundStep, maxGroundRoughnessThresh, avgGroundRoughnessThresh, useStairs);
+  octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, useRoughness, vehicleType, robWidth, robLength, groundPlaneSearchDist, mapSensors_, baseFrameHeightAboveGround, successfulProjectionsPercent, successfulStairProjectionsPercent, maxGroundStep, maxGroundRoughnessThresh, avgGroundRoughnessThresh, useStairs);
 }
 
 // ***************************************************************************

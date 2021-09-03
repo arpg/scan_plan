@@ -1,7 +1,7 @@
 #include "octomap_man.h"
 
 // ***************************************************************************
-octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool useRoughness, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh, bool useStairs)
+octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool useRoughness, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent, double successfulStairProjectionsPercent, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh, bool useStairs)
 {
   maxDistEsdf_ = maxDistEsdf;
   esdfUnknownAsOccupied_ = esdfUnknownAsOccupied;
@@ -13,6 +13,7 @@ octomap_man::octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool us
   robLength_ = robLength;
   radRob_ = std::max(robWidth, robLength) / 2;
   successfulProjectionsPercent_ = successfulProjectionsPercent / 100; // normalize [0,1] to avoid multiplying by 100 for comparisons
+  successfulStairProjectionsPercent_ = successfulStairProjectionsPercent / 100;
   maxGroundRoughnessThresh_ = maxGroundRoughnessThresh;
   avgGroundRoughnessThresh_ = avgGroundRoughnessThresh;
   maxGroundStep_ = maxGroundStep;
@@ -358,7 +359,7 @@ bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& a
   avgRoughness /= double(successfulProjections);
   avgGroundPt /= double(successfulProjections);
 
-  if(nStairProjections > double(surfCoordsBase_.rows())/2)
+  if( double(nStairProjections) > double(surfCoordsBase_.rows()) * successfulStairProjectionsPercent_ )
     return true;
 
   if( (maxElevation - minElevation) > maxGroundStep_ )
@@ -367,7 +368,7 @@ bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& a
   if ( (maxRoughness >= maxGroundRoughnessThresh_) || (avgRoughness >= avgGroundRoughnessThresh_) )
     return false;
 
-  if( double(successfulProjections) / double(surfCoordsBase_.rows()) < successfulProjectionsPercent_ )
+  if( double(successfulProjections) < double(surfCoordsBase_.rows()) * successfulProjectionsPercent_ )
     return false;
 
   return true;

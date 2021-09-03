@@ -30,6 +30,7 @@ private:
   double maxGroundStep_; // only for "ground" for now, determines the maximum step size on the ground that the robot is able to go over
 
   double successfulProjectionsPercent_;
+  double successfulStairProjectionsPercent_;
 
   std::string vehicleType_; // "air", "ground"
   Eigen::MatrixXd surfCoordsBase_; // list of coordinates spanning the vehicle's surface area looking from above in base frame (useful to project to ground for terrain) 
@@ -44,7 +45,7 @@ private:
  
 public:
   ~octomap_man();
-  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool useRoughness, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent_, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh, bool useStairs=false);
+  octomap_man(double maxDistEsdf, bool esdfUnknownAsOccupied, bool useRoughness, std::string vehicleType, double robWidth, double robLength, double groundPlaneSearchDist, const std::vector<mapping_sensor>& mapSensors, double baseFrameHeightAboveGround, double successfulProjectionsPercent, double successfulStairProjectionsPercent, double maxGroundStep, double maxGroundRoughnessThresh, double avgGroundRoughnessThresh, bool useStairs=false);
 
   double volumetric_gain(const Eigen::Vector3d&);
 
