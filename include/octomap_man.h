@@ -60,6 +60,7 @@ public:
   bool validate(const Eigen::Vector3d& pos1, const Eigen::Vector3d& pos2);
   bool validate1(const Eigen::Vector4d&);
   bool validate2(const Eigen::Vector4d&);
+  bool validate3(const Eigen::Vector4d&);
 
   bool cast_pose_down(const Eigen::Vector4d&, Eigen::Vector3d& avgGroundPt);
   bool cast_pose_down(const Eigen::Vector4d&, Eigen::Vector3d& avgGroundPt, double& minElevation, double& maxElevation);

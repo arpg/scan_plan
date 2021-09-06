@@ -183,7 +183,7 @@ bool octomap_man::validate(const Eigen::Vector3d& pos1, const Eigen::Vector3d& p
   {
     pos = (1-lambda)*pos1 + lambda*pos2; 
 
-    if ( !validate2( Eigen::Vector4d(pos(0),pos(1),pos(2),yaw) ) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) )
+    if ( !validate3( Eigen::Vector4d(pos(0),pos(1),pos(2),yaw) ) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) )
       return false; // under-collision
 
     lambda += delLambda;
@@ -285,6 +285,35 @@ bool octomap_man::validate2(const Eigen::Vector4d& pose)
 }
 
 // ***************************************************************************
+bool octomap_man::validate3(const Eigen::Vector4d& pose) // checks the planned path and dropped path
+{
+  const double minDynObsHeight = 0.5;
+
+  bool isValid = validate2(pose);
+  if(!isValid || vehicleType_ == "air")
+    return isValid;
+
+  // atleast 3 voxels heigher than max ground elevation, in worst case there should be one voxel between the dropped path and ground voxel
+  if( minDynObsHeight < 3 * octTree_->getResolution() )  
+  {
+    ROS_ERROR_THROTTLE(1, "scan_plan: validate3: min dyn obs height too small");
+    return isValid;
+  }
+
+  double drop = baseFrameHeightAboveGround_ - minDynObsHeight; // distance of min height obs from robot top
+
+  if(drop <= 0.0)
+  {
+    ROS_ERROR_THROTTLE(1, "scan_plan: validate3: min dyn obs height greater than robot height");
+    return isValid;
+  }
+
+  Eigen::Vector4d minHeightPose(pose(0), pose(1), pose(2)-drop, pose(3));
+
+  return validate2(minHeightPose); // the planned path is valid, check for the dropped path
+}
+
+// ***************************************************************************
 bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& avgGroundPt)
 {
   double minElevation, maxElevation;
@@ -357,7 +386,7 @@ bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& a
     return false;
 
   avgRoughness /= double(successfulProjections);
-  avgGroundPt /= double(successfulProjections);
+  avgGroundPt /= double(successfulProjections); avgGroundPt(2) = maxElevation;  // put the avgGroundPt at max elevation
 
   if( double(nStairProjections) > double(surfCoordsBase_.rows()) * successfulStairProjectionsPercent_ )
     return true;
