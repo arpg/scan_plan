@@ -286,6 +286,36 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
     return;
   }
 
+  if( taskMsg.data == "plan_local" )
+  {
+    publish_plan_status("Local Plan Requested");
+    path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for computation
+
+    Eigen::MatrixXd minCstPath = plan_locally(); // does not give a path if vol gain is low, outputs path that maintain neighbor separation if one exists
+
+    if( minCstPath.rows() > 0 )
+    {
+      status_.mode = plan_status::MODE::LOCALEXP;
+      minCstPath_ = minCstPath;
+      publish_can_plan(true);
+    }
+    else
+    {
+      minCstPath = plan_locally("alpha", nTriesLocalPlan_); // gives a path regardless of vol gain or neighbor separation
+      if(minCstPath.rows() > 0)
+      {
+        status_.mode = plan_status::MODE::LOCALEXP;
+        minCstPath_ = minCstPath;
+        publish_can_plan(true);
+      }
+      else
+        publish_can_plan(false);
+    }
+
+    path_man::publish_path(minCstPath_, worldFrameId_, pathPub_); // publish path if found, otherwise publish older path and don't change mode
+    return;
+  }
+
   if( taskMsg.data == "plan_global" )
   {
     publish_plan_status("Global Plan Requested");
