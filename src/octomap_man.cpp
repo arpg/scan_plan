@@ -287,7 +287,7 @@ bool octomap_man::validate2(const Eigen::Vector4d& pose)
 // ***************************************************************************
 bool octomap_man::validate3(const Eigen::Vector4d& pose) // checks the planned path and dropped path
 {
-  const double minDynObsHeight = 0.5;
+  const double minDynObsHeight = 0.55;
 
   bool isValid = validate2(pose);
   if(!isValid || vehicleType_ == "air")
