@@ -183,7 +183,13 @@ bool octomap_man::validate(const Eigen::Vector3d& pos1, const Eigen::Vector3d& p
   {
     pos = (1-lambda)*pos1 + lambda*pos2; 
 
-    if ( !validate3( Eigen::Vector4d(pos(0),pos(1),pos(2),yaw) ) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) )
+    if ( carefulValidation_ && u_coll( Eigen::Vector4d(pos(0),pos(1),pos(2),yaw) ) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) )
+      return false;
+      
+    if ( !carefulValidation_ && !useStairs_ && !validate3( Eigen::Vector4d(pos(0),pos(1),pos(2),yaw) ) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) )
+      return false; // under-collision
+
+    if ( !carefulValidation_ && useStairs_ && !validate3( Eigen::Vector4d(pos(0),pos(1),pos(2),yaw) ) && ((pos-robPos_).squaredNorm() > pow(radRob_,2)) )
       return false; // under-collision
 
     lambda += delLambda;
@@ -193,21 +199,33 @@ bool octomap_man::validate(const Eigen::Vector3d& pos1, const Eigen::Vector3d& p
 }
 
 // ***************************************************************************
-bool octomap_man::validate1(const Eigen::Vector4d& pose)
+bool octomap_man::validate1(const Eigen::Vector4d& pose) // checks robot surfaces along planned and dropped paths
 {
   const int nCollisionVoxs = 4;
+  const double minDynObsHeight = 0.55;
 
   if( surfCoordsBase_.rows() < 1 ) // if the robot is represented by no surface shadow, then return unsuccessful projection
   {
-    ROS_ERROR( "scan_plan: Ground robot footprint is zero" ); 
+    ROS_ERROR_THROTTLE(1, "scan_plan: validate1: Ground robot footprint is zero" ); 
     return false;
   }
 
-  if( (baseFrameHeightAboveGround_-maxGroundStep_) < 3*octTree_->getResolution() )
-    ROS_WARN("scan_plan path validate: Not enough clearance below the path");
+  if( minDynObsHeight < 3*octTree_->getResolution() )
+  {
+    ROS_ERROR_THROTTLE(1, "scan_plan: validate1: min dyn obs height too small");
+    return true;
+  }
+
+  double drop = baseFrameHeightAboveGround_ - minDynObsHeight;
+
+  if( drop <= 0.0 )
+  {
+    ROS_ERROR_THROTTLE(1, "scan_plan: validate3: min dyn obs height greater than robot height");
+    return true;
+  }
 
   if( surfCoordsBase_.rows()  < nCollisionVoxs )
-    ROS_WARN("scan_plan path validate: Not enough voxels in the robot footprint");    
+    ROS_WARN_THROTTLE(1, "scan_plan: validate1: Not enough voxels in the robot footprint");    
 
   int occupiedVoxs = 0;
   for(int i=0; i<surfCoordsBase_.rows(); i++)
@@ -216,16 +234,15 @@ bool octomap_man::validate1(const Eigen::Vector4d& pose)
     double yaw = pose(3);
     Eigen::Vector3d ptIn( rotz(surfCoordsBase_.row(i), yaw) + pos );
 
-    octomap::OcTreeKey currKey = octTree_->coordToKey (ptIn(0), ptIn(1), ptIn(2)); // initialize key at current robot position
+    octomap::OcTreeKey currKeyTop = octTree_->coordToKey (ptIn(0), ptIn(1), ptIn(2)); // initialize key at current robot position
+    octomap::OcTreeKey currKeyBottom = octTree_->coordToKey (ptIn(0), ptIn(1), ptIn(2)-drop); // initialize key at current robot position
 
     #ifdef WITH_ROUGHNESS
-      octomap::RoughOcTree::NodeType* currNodeTop = octTree_->search(currKey);
-      currKey.k[2]--;
-      octomap::RoughOcTree::NodeType* currNodeBottom = octTree_->search(currKey);
+      octomap::RoughOcTree::NodeType* currNodeTop = octTree_->search(currKeyTop);
+      octomap::RoughOcTree::NodeType* currNodeBottom = octTree_->search(currKeyBottom);
     #else
-      octomap::OcTreeNode* currNodeTop = octTree_->search(currKey);
-      currKey.k[2]--;
-      octomap::OcTreeNode* currNodeBottom = octTree_->search(currKey);
+      octomap::OcTreeNode* currNodeTop = octTree_->search(currKeyTop);
+      octomap::OcTreeNode* currNodeBottom = octTree_->search(currKeyBottom);
     #endif
 
     if (currNodeTop != NULL && octTree_->isNodeOccupied(currNodeTop)) // if occupied
@@ -240,7 +257,7 @@ bool octomap_man::validate1(const Eigen::Vector4d& pose)
 }
 
 // ***************************************************************************
-bool octomap_man::validate2(const Eigen::Vector4d& pose)
+bool octomap_man::validate2(const Eigen::Vector4d& pose) // check planned path only
 {
   const int nCollisionVoxs = 4; 
 
@@ -618,6 +635,18 @@ bool octomap_man::get_use_roughness()
 void octomap_man::set_use_roughness(const bool& useRoughness)
 {
   useRoughness_ = useRoughness;
+}
+
+// ***************************************************************************
+void octomap_man::set_careful_validation(const bool& carefulValidation)
+{
+  carefulValidation_ = carefulValidation;
+}
+
+// ***************************************************************************
+bool octomap_man::get_careful_validation()
+{
+  return carefulValidation_;
 }
 
 // ***************************************************************************

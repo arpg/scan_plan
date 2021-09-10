@@ -42,6 +42,8 @@ private:
 
   uint8_t isInitialized_ = 0x00;
   double baseFrameHeightAboveGround_;
+
+  bool carefulValidation_ = false;
  
 public:
   ~octomap_man();
@@ -80,6 +82,9 @@ public:
   void set_use_roughness(const bool& useRoughness);
   bool get_use_roughness();
   double get_base_frame_height_above_ground();
+
+  void set_careful_validation(const bool&);
+  bool get_careful_validation();
 
   bool check_for_cliff(const Eigen::Vector3d& posIn, const double& headingIn);
 };

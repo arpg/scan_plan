@@ -202,7 +202,7 @@ bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBn
   // IMPORTANT: Requires a global map but only checks the edges which has source vertex inside the local bounds
   // Requires global map because an edge is checked all the way
 
-  if( path.rows() == 0 )
+  if( path.rows() < 1 )
     return true;
 
   if(path.rows() == 1 || path_len(path) < 1e-3) // path with one point is invalid, nothing to check
@@ -216,7 +216,7 @@ bool path_man::validate_path(Eigen::MatrixXd& path, const Eigen::Vector3d& minBn
   for (int i=0; i<(path.rows()-1); i++) // collision check for each segment
   {
     // assuming path is being followed, the vehicle should come in local proximity to all vertices, so it's sufficient to check the source vertices for in_bounds
-    if( !in_bounds(path.row(i),path.row(i+1), minBnd, maxBnd) || octMan_->validate(path.row(i), path.row(i+1)) ) 
+    if( !in_bounds(path.row(i),path.row(i+1), minBnd, maxBnd) || octMan_->validate(path.row(i), path.row(i+1)) || octMan_->validate(path.row(i+1), path.row(i)) ) 
       continue;
 
     if(i == 0)

@@ -286,6 +286,14 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
     return;
   }
 
+  if( taskMsg.data == "careful" )
+  {
+    publish_plan_status("Careful Path Validation Requested");
+    octMan_->set_careful_validation(true);
+
+    return;
+  }
+
   if( taskMsg.data == "plan_local" )
   {
     publish_plan_status("Local Plan Requested");
@@ -643,21 +651,16 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   std::cout << "Number of path rows before validation: " << minCstPath_.rows() << std::endl;
   bool isPathValid = true;
 
-  bool esdfUnknownAsOccupied = octMan_->get_esdf_unknown_as_occupied(); 
-  bool useRoughness = octMan_->get_use_roughness(); 
-  octMan_->set_esdf_unknown_as_occupied(false); // treat path as collision-free where esdf doesn't exist
-  octMan_->set_use_roughness(false); // don't use roughness for validation
-
-  if( status_.mode != plan_status::MODE::MOVEANDREPLAN )
+  if( status_.mode != plan_status::MODE::MOVEANDREPLAN || octMan_->get_careful_validation() )
    isPathValid = pathMan_->validate_path_without_mod(minCstPath_, robPos+localBndsDynMin_, robPos+localBndsDynMax_);
-
-  octMan_->set_esdf_unknown_as_occupied(esdfUnknownAsOccupied);
-  octMan_->set_use_roughness(useRoughness);
 
   std::cout << "Number of path rows after validation: " << minCstPath_.rows() << std::endl;
 
   if( isPathValid )
+  {
     status_.nPathInvalidations = 0; // start counting again if a valid path is encountered
+    octMan_->set_careful_validation(false);
+  }
   else
     status_.nPathInvalidations++;
 
@@ -667,19 +670,13 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   if( status_.nPathInvalidations >= nTriesPathValidation_ ) 
   {
     minCstPath_ = Eigen::MatrixXd(0,3); // TODO: the clipped path can be clipped behind the vehicle causing the vehicle to go back which needs to be fixed to take this statement out
+    path_man::publish_empty_path(worldFrameId_, pathPub_);
     std::cout << "Updating graph occupancy (all)" << std::endl;
-
-    esdfUnknownAsOccupied = octMan_->get_esdf_unknown_as_occupied();
-    useRoughness = octMan_->get_use_roughness(); 
-    octMan_->set_esdf_unknown_as_occupied(false); // treat path as collision-free where esdf doesn't exist
-    octMan_->set_use_roughness(false); // don't use roughness for validation
 
     graph_-> update_occupancy(localBndsDynMin_+robPos, localBndsDynMax_+robPos, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
 
-    octMan_->set_esdf_unknown_as_occupied(esdfUnknownAsOccupied);
-    octMan_->set_use_roughness(useRoughness);
-
     status_.nPathInvalidations = 0;
+    octMan_->set_careful_validation(false);
 
     if( status_.mode == plan_status::MODE::GOALPT )
     {
@@ -707,8 +704,6 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
     std::cout << "Publishing  graph viz" << std::endl;
     graph_->publish_viz(vizPub_);
   }
-
-
 
   //TODO: Generate graph diconnect warning if no path is successfully added to the graph
   // Only add node to the graph if there is no existing node closer than radRob in graph lib, return success in that case since the graph is likely to be connected fine
