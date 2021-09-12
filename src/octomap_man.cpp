@@ -387,13 +387,18 @@ bool octomap_man::cast_pose_down(const Eigen::Vector4d& pose, Eigen::Vector3d& a
     if( currGroundRoughness >  maxRoughness )
       maxRoughness = currGroundRoughness;
 
-    if(isFirst)
+    if(isFirst || (isOnStair && nStairProjections == 1))
     {
       minElevation = currGroundPt(2);
       maxElevation = currGroundPt(2);
       isFirst = false;
+      continue;
     }
-    else if( currGroundPt(2) > maxElevation )
+
+    if(nStairProjections > 0 && !isOnStair )
+      continue;
+
+    if( currGroundPt(2) > maxElevation )
       maxElevation = currGroundPt(2);
     else if( currGroundPt(2) < minElevation )
       minElevation = currGroundPt(2);
