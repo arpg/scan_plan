@@ -159,6 +159,8 @@ public:
   void publish_plan_status(const std::string&);
   void publish_can_plan(bool canPlan);
   bool end_of_path();
+  bool arrived_at_goal();
+  std::string modeToString(plan_status::MODE mode);
 
   double path_cost_alpha(const Eigen::MatrixXd&, const double&, const double&);
   double path_cost_beta(const Eigen::MatrixXd&, const double&, const double&, double&, double& separationDist);

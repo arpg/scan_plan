@@ -502,9 +502,14 @@ int octomap_man::cast_ray_down(const Eigen::Vector3d& ptIn, Eigen::Vector3d& gro
     return 1;
   }
 
+  octomap::point3d groundPtOct = octTree_->keyToCoord(currKey);
+  groundPt(0) = groundPtOct.x();
+  groundPt(1) = groundPtOct.y();
+  groundPt(2) = 0;
+
   // if search all the way down, no ground found
-  groundPt = Eigen::Vector3d(0,0,0);
-  return -1;
+  //groundPt = Eigen::Vector3d(0,0,0);
+  return 0;
 }
 
 // ***************************************************************************

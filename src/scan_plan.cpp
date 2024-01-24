@@ -183,6 +183,9 @@ void scan_plan::setup_octomap()
 
   ROS_INFO("%s: Setting up octomap manager ...", nh_->getNamespace().c_str());
 
+  // New line to print the value
+  ROS_INFO("groundPlaneSearchDist: %f", groundPlaneSearchDist);
+
   octMan_ = new octomap_man(maxDistEsdf, esdfUnknownAsOccupied, useRoughness, vehicleType, robWidth, robLength, groundPlaneSearchDist, mapSensors_, baseFrameHeightAboveGround, successfulProjectionsPercent, successfulStairProjectionsPercent, maxGroundStep, maxGroundRoughnessThresh, avgGroundRoughnessThresh, useStairs);
 }
 
@@ -265,8 +268,11 @@ Eigen::Vector3d scan_plan::transform_to_eigen_pos(const geometry_msgs::Transform
 // ***************************************************************************
 void scan_plan::task_cb_str(const std::string& taskIn)
 {
+  ROS_INFO("Task In: %s", taskIn.c_str());
   std_msgs::String taskMsg;
   taskMsg.data = taskIn;
+
+  ROS_INFO("Calling task_cb with string: %s", taskMsg.data.c_str());
 
   task_cb(taskMsg);
 }
@@ -275,6 +281,7 @@ void scan_plan::task_cb_str(const std::string& taskIn)
 void scan_plan::task_cb(const std_msgs::String& taskMsg)
 {
   // INDUCED TASK LOGIC FUNCTION
+  ROS_INFO("%s: Task received: %s", nh_->getNamespace().c_str(), taskMsg.data.c_str());
 
   if( (isInitialized_ & 0x03) != 0x03 )
     return;
@@ -413,8 +420,9 @@ void scan_plan::task_cb(const std_msgs::String& taskMsg)
   }
 
   //TODO: right now it only replans to the goal point if the mode changes but what if it's already in goal point mode and the goal point changes 
-  if( ( boost::iequals(taskMsg.data, "guiCommand") || boost::iequals(taskMsg.data, "guiCmd") ) && status_.mode != plan_status::MODE::GOALPT )
-  {  
+  if( ( boost::iequals(taskMsg.data, "guiCommand") || boost::iequals(taskMsg.data, "guiCmd") || boost::iequals(taskMsg.data, "GOALPT") ) && status_.mode != plan_status::MODE::GOALPT )
+  { 
+    ROS_INFO("%s: Gui request for goal point received", nh_->getNamespace().c_str()); 
     publish_plan_status("Gui request for goal point received");
     path_man::publish_empty_path(worldFrameId_, pathPub_); // stop the vehicle for computation
     Eigen::MatrixXd minCstPath = plan_to_point(status_.goalPt);
@@ -518,7 +526,7 @@ bool scan_plan::end_of_path()
   if( (robPos.transpose()-minCstPath_.bottomRows(1)).norm() < endOfPathSuccRad_ ) // if the robot is near the end point of the path
     return true;
 
-  std::cout << "Robot-Path Distance: " << path_man::point_to_path_dist(robPos, minCstPath_) << std::endl;
+  //std::cout << "Robot-Path Distance: " << path_man::point_to_path_dist(robPos, minCstPath_) << std::endl;
 
   if( path_man::point_to_path_dist(robPos, minCstPath_) > minPathDistTimerBasedReplan_ )
     return true; // if robot is away from planned path and time interval has elapsed
@@ -527,11 +535,46 @@ bool scan_plan::end_of_path()
 }
 
 // ***************************************************************************
+bool scan_plan::arrived_at_goal() {
+  update_base_to_world();
+  Eigen::Vector3d robPos = transform_to_eigen_pos(baseToWorld_);
+  octMan_->update_robot_pos(robPos);
+  
+  Eigen::Vector3d current_goal = status_.goalPt; // Ensure this is Eigen::Vector3d
+  
+  double threshold = 0.5;
+  Eigen::Vector3d diff = current_goal - robPos; // Direct vector subtraction
+  double distance = diff.norm(); // Eigen's way to calculate Euclidean distance
+
+  return distance < threshold;
+}
+
+
+std::string scan_plan::modeToString(plan_status::MODE mode)
+{
+    switch (mode)
+    {
+        case plan_status::MODE::LOCALEXP: return "LOCALEXP";
+        case plan_status::MODE::GOALPT: return "GOALPT";
+        case plan_status::MODE::GLOBALEXP: return "GLOBALEXP";
+        case plan_status::MODE::REPORT: return "REPORT";
+        case plan_status::MODE::UNSTUCK: return "UNSTUCK";
+        case plan_status::MODE::MOVEANDREPLAN: return "MOVEANDREPLAN";
+        default: return "UNKNOWN";
+    }
+}
+
+
+// ***************************************************************************
 void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rate
 {
   // END-OF-TASK LOGIC FUNCTION
 
   // stops timer to clear the queque, don't forget to start on every return
+
+  ROS_INFO("arrived_at_goal: %s", arrived_at_goal() ? "true" : "false");
+  ROS_INFO("end_of_path: %s", end_of_path() ? "true" : "false");
+  ROS_INFO("Current Planner Mode: %s", modeToString(status_.mode).c_str());
 
   if( (isInitialized_ & 0x03) != 0x03 )
     return;
@@ -566,7 +609,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
       minCstPath_ = minCstPath;
     }
   }
-  else if(status_.mode == plan_status::MODE::GOALPT && end_of_path())
+  else if(status_.mode == plan_status::MODE::GOALPT && end_of_path() && arrived_at_goal())
   {
     ROS_WARN("%s: Goal point mode end-of-path, planning exploration path", nh_->getNamespace().c_str());
     Eigen::MatrixXd minCstPath = plan_exploration_path(); // vehicle already stopped for computation due to EOP
@@ -576,6 +619,19 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
       minCstPath_ = minCstPath;
     }
   }
+
+  else if(status_.mode == plan_status::MODE::GOALPT && end_of_path() && !arrived_at_goal())
+  {
+    ROS_WARN("%s: Goal point mode end-of-path, planning exploration path", nh_->getNamespace().c_str());
+    Eigen::MatrixXd minCstPath = plan_to_point(status_.goalPt); // vehicle already stopped for computation due to EOP
+    if(minCstPath.rows() > 0) // exploration path found
+    {
+      ROS_WARN("%s: Exploration path found", nh_->getNamespace().c_str());
+      minCstPath_ = minCstPath;
+    }
+  }
+
+  //Finsihed and arrived to goal point
   else if(status_.mode == plan_status::MODE::GLOBALEXP && end_of_path())
   {
     stop_if_cliff_after_eop();
@@ -595,6 +651,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
       minCstPath_ = minCstPath;
     }
   }
+
   else if( (status_.mode == plan_status::MODE::LOCALEXP) && end_of_path())
   {
     stop_if_cliff_after_eop();
@@ -632,7 +689,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
     status_.nPathInvalidations = 0;
   }
 
-  std::cout << "Number of failed replans: " << status_.nFailedReplans << std::endl;
+  //std::cout << "Number of failed replans: " << status_.nFailedReplans << std::endl;
 
   if( status_.nFailedReplans >= nTriesReplan_ ) // assuming nTriesReplan_ > 0
   {
@@ -648,13 +705,13 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   Eigen::Vector3d robPos( transform_to_eigen_pos(baseToWorld_) );
   octMan_->update_robot_pos(robPos);
 
-  std::cout << "Number of path rows before validation: " << minCstPath_.rows() << std::endl;
+  //std::cout << "Number of path rows before validation: " << minCstPath_.rows() << std::endl;
   bool isPathValid = true;
 
   if( status_.mode != plan_status::MODE::MOVEANDREPLAN || octMan_->get_careful_validation() )
    isPathValid = pathMan_->validate_path_without_mod(minCstPath_, robPos+localBndsDynMin_, robPos+localBndsDynMax_);
 
-  std::cout << "Number of path rows after validation: " << minCstPath_.rows() << std::endl;
+  //std::cout << "Number of path rows after validation: " << minCstPath_.rows() << std::endl;
 
   if( isPathValid )
   {
@@ -664,14 +721,14 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   else
     status_.nPathInvalidations++;
 
-  std::cout << "Number of path invalidations: " << status_.nPathInvalidations << std::endl;
+  //std::cout << "Number of path invalidations: " << status_.nPathInvalidations << std::endl;
 
   // if the vehicle is not following the pose graph, then validate the path
   if( status_.nPathInvalidations >= nTriesPathValidation_ ) 
   {
     minCstPath_ = Eigen::MatrixXd(0,3); // TODO: the clipped path can be clipped behind the vehicle causing the vehicle to go back which needs to be fixed to take this statement out
     path_man::publish_empty_path(worldFrameId_, pathPub_);
-    std::cout << "Updating graph occupancy (all)" << std::endl;
+    //std::cout << "Updating graph occupancy (all)" << std::endl;
 
     graph_-> update_occupancy(localBndsDynMin_+robPos, localBndsDynMax_+robPos, false); // if path is hitting/dynamic obstacle appeared update occupany of all edges, so that points can be sampled in the neighboorhood of appearing obstacle cz the robot is there, this prevents graph disconnections
 
@@ -680,6 +737,7 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
 
     if( status_.mode == plan_status::MODE::GOALPT )
     {
+      ROS_INFO("%s: Goal point mode end-of-path, planning exploration path", nh_->getNamespace().c_str());
       status_.mode = plan_status::MODE::LOCALEXP; // set a different mode to retrigger GOALPT, also fall back to it if task_cb doesn't update the path 
       task_cb_str("GOALPT");
     }
@@ -691,17 +749,17 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
   }
   else
   {
-    std::cout << "Updating graph occupancy (occupied only)" << std::endl;
+    //std::cout << "Updating graph occupancy (occupied only)" << std::endl;
     graph_-> update_occupancy(geoFenceMin_, geoFenceMax_, true); // if path is obstacle-free update occupany of only occupied edges
    }
 
   if(didReplan)
   {
     // only publish graph when replan happens to keep bags from going big
-    std::cout << "Publishing frontiers" << std::endl; 
+    //std::cout << "Publishing frontiers" << std::endl; 
     graph_->publish_frontiers(frontiersPub_); 
 
-    std::cout << "Publishing  graph viz" << std::endl;
+    //std::cout << "Publishing  graph viz" << std::endl;
     graph_->publish_viz(vizPub_);
   }
 
@@ -716,20 +774,20 @@ void scan_plan::timer_replan_cb(const ros::TimerEvent&) // running at a fast rat
    
   ros::Duration timeE = ros::Time::now() - timeS;
 
-  std::cout << "Publishing rrt viz" << std::endl;
+  //std::cout << "Publishing rrt viz" << std::endl;
   rrtTree_->publish_viz(vizPub_,worldFrameId_);
 
-  std::cout << "Publishing plan status" << std::endl;
+  //std::cout << "Publishing plan status" << std::endl;
   publish_plan_status();
 
-  std::cout << "Publishing lookahead path" << std::endl;
+  //std::cout << "Publishing lookahead path" << std::endl;
   path_man::publish_path(minCstPath_, worldFrameId_, pathPub_);
 
   std_msgs::Float64 computeTimeMsg;
   computeTimeMsg.data = timeE.toSec();
   compTimePub_.publish(computeTimeMsg);
   
-  std::cout << "Replan Compute Time = " << computeTimeMsg.data << " sec" << std::endl;
+  //std::cout << "Replan Compute Time = " << computeTimeMsg.data << " sec" << std::endl;
 
   // clear the queque, reset the time
   timerReplan_.stop();
@@ -857,7 +915,7 @@ Eigen::MatrixXd scan_plan::plan_home()
 
   ROS_WARN("%s: Planning Home", nh_->getNamespace().c_str());
 
-  std::cout << "Planning to graph" << std::endl;
+  //std::cout << "Planning to graph" << std::endl;
   double latestPosDist;
   VertexDescriptor srcVertD = graph_->latest_pos_vert(robPos, latestPosDist);
 
@@ -874,7 +932,7 @@ Eigen::MatrixXd scan_plan::plan_home()
     }
   }
 
-  std::cout << "Planning vertex to home vertex" << std::endl;
+  //std::cout << "Planning vertex to home vertex" << std::endl;
   Eigen::MatrixXd minCstPath = graph_->plan_home(srcVertD);
   if(minCstPath.rows() < 2)
     return Eigen::MatrixXd(0,0); // posHist_.topRows(posHistSize_).colwise().reverse();
@@ -1111,14 +1169,14 @@ Eigen::MatrixXd scan_plan::plan_locally()
   }
 
   // if no path is found or the path found does not have enough vol gain, continue to using beta cost
-  std::cout << "Not enough vol gain planning with beta cost, no of tries: " << nTriesLocalPlan_ << std::endl;
+  //std::cout << "Not enough vol gain planning with beta cost, no of tries: " << nTriesLocalPlan_ << std::endl;
   minCstPath = plan_locally("beta", nTriesLocalPlan_);
 
   if( minCstPath.rows() > 0 ) // beta paths all are above min vol gain requirement, so no need to check for vol gain
     return minCstPath;
 
   // giving up, send empty path
-  std::cout << "Not enough vol gain, sending empty path" << std::endl;
+  //std::cout << "Not enough vol gain, sending empty path" << std::endl;
   return Eigen::MatrixXd(0,0);
 }
 
@@ -1319,7 +1377,7 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
 
   Eigen::MatrixXd path;
 
-  std::cout << "Adding non-lookahead paths" << std::endl;
+  //std::cout << "Adding non-lookahead paths" << std::endl;
   // all other paths
 
   int nGraphPaths = 0;
@@ -1342,7 +1400,7 @@ bool scan_plan::add_paths_to_graph(rrt* tree, std::vector<int>& idLeaves, int id
     }
   }
 
-  std::cout << "Adding lookahead path" << std::endl;
+  //std::cout << "Adding lookahead path" << std::endl;
   // lookahead path
   // assuming already checked for minimum path length
   path = tree->get_path(idLookaheadLeaf);
